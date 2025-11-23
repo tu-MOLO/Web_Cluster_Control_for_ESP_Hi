@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP-HI 智能控制中心</title>
+    <meta name="description" content="ESP-HI舵机狗智能控制系统 - 多设备管理和实时控制平台">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <!-- 背景动画 -->
+    <div class="animated-background">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+
+    <div class="container">
+        <!-- 顶部导航栏 -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">🐕</div>
+                    <div class="logo-text">
+                        <h1>ESP-HI 控制中心</h1>
+                        <p class="subtitle">ESP-HI 机器狗集群管理系统</p>
+                    </div>
+                </div>
+                <div class="status-indicators">
+                    <div class="status-item" id="connection-status">
+                        <span class="status-dot offline"></span>
+                        <span>未连接服务器</span>
+                    </div>
+                    <div class="status-item" id="device-count">
+                        <span id="recorded-count">已记录 0 设备</span>
+                        <span style="margin: 0 5px">|</span>
+                        <span id="connected-count">已连接 0 设备</span>
+                    </div>
+                    <div class="status-item theme-toggle-container">
+                        <button id="theme-toggle" class="nav-icon" title="切换主题">
+                            🌈
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <div class="nav-section">
+                    <h3 class="nav-title">主要功能</h3>
+                    <button class="nav-item active" data-page="devices">
+                        <span class="nav-icon">📡</span>
+                        <span>设备管理</span>
+                        <span class="badge" id="devices-badge">0</span>
+                    </button>
+                    <button class="nav-item" data-page="control">
+                        <span class="nav-icon">🎮</span>
+                        <span>移动控制</span>
+                    </button>
+                    <button class="nav-item" data-page="actions">
+                        <span class="nav-icon">⚡</span>
+                        <span>预设动作</span>
+                    </button>
+                </div>
+
+                <div class="nav-section" style="margin-top: 20px;">
+                    <h3 class="nav-title">高级功能</h3>
+                    <button class="nav-item" data-page="calibration">
+                        <span class="nav-icon">🔧</span>
+                        <span>舵机校准</span>
+                    </button>
+                    <button class="nav-item" data-page="sequence">
+                        <span class="nav-icon">🎬</span>
+                        <span>动作序列</span>
+                    </button>
+                </div>
+
+                <div class="nav-section" style="margin-top: auto;">
+                    <div class="system-info">
+                        <small>v1.0.0 Beta by Molo</small>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 内容区域 -->
+            <main class="content-area">
+                <!-- 设备管理页面 -->
+                <div class="page active" id="devices-page">
+                    <div class="page-header">
+                        <h2>设备管理</h2>
+                        <p class="page-description">扫描并连接局域网内的 ESP-HI 设备</p>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>设备扫描</h3>
+                            <div id="scan-status" style="font-size: 0.9rem; color: var(--text-secondary);"></div>
+                        </div>
+                        <div class="card-body">
+                            <div class="scan-controls" style="margin-bottom: 20px;">
+                                <button class="btn btn-primary" id="scan-btn" style="width: 100%;">
+                                    <span class="btn-icon">🔍</span>
+                                    <span>开始扫描</span>
+                                </button>
+                            </div>
+
+                            <div class="devices-layout"
+                                style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                <!-- 已发现设备 -->
+                                <div class="devices-column">
+                                    <h4 style="margin-bottom: 10px; color: var(--text-secondary);">已发现设备</h4>
+                                    <div class="devices-list" id="devices-list">
+                                        <div class="empty-state">
+                                            <div class="empty-icon">📡</div>
+                                            <p>尚未扫描设备</p>
+                                            <p class="empty-hint">点击上方"开始扫描"按钮发现设备</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 分隔线 -->
+                                <div class="devices-divider"></div>
+
+                                <!-- 已连接设备 -->
+                                <div class="devices-column">
+                                    <h4 style="margin-bottom: 10px; color: var(--text-secondary);">已连接设备 <span
+                                            class="badge" id="connected-badge">0</span></h4>
+                                    <div class="devices-list" id="connected-devices-list">
+                                        <div class="empty-state">
+                                            <p class="empty-hint">暂无已连接设备</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="action-bar"
+                                style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                                <button class="btn btn-success" id="connect-selected-btn" disabled>
+                                    <span class="btn-icon">🔗</span>
+                                    <span>连接选中设备</span>
+                                </button>
+                                <p class="hint-text"
+                                    style="margin-top: 10px; font-size: 0.85rem; color: var(--text-secondary);">
+                                    提示：点击左侧列表中的设备进行选择，然后点击"连接选中设备"。只有连接成功的设备才能进行控制。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 移动控制页面 -->
+                <div class="page" id="control-page">
+                    <div class="page-header">
+                        <h2>移动控制</h2>
+                        <p class="page-description">实时控制已连接设备的移动</p>
+                    </div>
+
+                    <div class="control-grid">
+                        <div class="card joystick-card">
+                            <div class="card-body">
+                                <div class="joystick-container">
+                                    <div class="joystick" id="joystick">
+                                        <div class="joystick-base"></div>
+                                        <div class="joystick-stick" id="joystick-stick"></div>
+                                    </div>
+                                </div>
+                                <div class="joystick-status">
+                                    <span id="joystick-direction">等待操作</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card settings-card">
+                            <div class="card-header">
+                                <h3>控制设置</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="setting-item" style="margin-bottom: 20px;">
+                                    <label for="move-delay" style="display: block; margin-bottom: 8px;">移动延迟
+                                        (毫秒)</label>
+                                    <div class="input-group" style="display: flex; align-items: center; gap: 10px;">
+                                        <input type="number" id="move-delay" value="500" min="100" max="2000" step="100"
+                                            class="input-field">
+                                        <span class="input-suffix">ms</span>
+                                    </div>
+                                </div>
+                                <div class="setting-item">
+                                    <label style="display: block; margin-bottom: 8px;">快捷键</label>
+                                    <div class="keyboard-hints" style="display: grid; gap: 8px;">
+                                        <div class="key-hint"><kbd
+                                                style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">W</kbd>
+                                            前进</div>
+                                        <div class="key-hint"><kbd
+                                                style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">S</kbd>
+                                            后退</div>
+                                        <div class="key-hint"><kbd
+                                                style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">A</kbd>
+                                            左转</div>
+                                        <div class="key-hint"><kbd
+                                                style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">D</kbd>
+                                            右转</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 预设动作页面 -->
+                <div class="page" id="actions-page">
+                    <div class="page-header">
+                        <h2>预设动作</h2>
+                        <p class="page-description">执行预设的动作指令</p>
+                    </div>
+
+                    <div class="actions-grid" id="actions-grid">
+                        <!-- 动作按钮将通过JavaScript动态生成 -->
+                    </div>
+
+                    <!-- 预设动作循环功能 -->
+                    <div class="card action-loop-card">
+                        <div class="card-header">
+                            <h3>动作循环执行</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="loop-controls">
+                                <div class="control-group">
+                                    <label for="loop-action-select">选择动作</label>
+                                    <div class="action-selector">
+                                        <button id="loop-action-select" class="btn btn-outline action-select-btn">
+                                            <span id="selected-action-display">请选择动作</span>
+                                            <span class="dropdown-icon">▼</span>
+                                        </button>
+                                        <div id="action-dropdown" class="action-dropdown hidden">
+                                            <!-- 动作选项将通过JavaScript生成 -->
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="control-group">
+                                    <label for="loop-delay">延迟时间 (秒)</label>
+                                    <div class="input-group">
+                                        <input type="number" id="loop-delay" class="input-field" min="0.1" max="60"
+                                            step="0.1" value="1">
+                                        <span class="input-suffix">秒</span>
+                                    </div>
+                                </div>
+
+                                <div class="button-group">
+                                    <button id="start-loop-btn" class="btn btn-success" disabled>
+                                        <span class="btn-icon">🔄</span>
+                                        <span>开始循环执行</span>
+                                    </button>
+                                    <button id="stop-loop-btn" class="btn btn-danger" disabled>
+                                        <span class="btn-icon">⏹️</span>
+                                        <span>停止循环</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 舵机校准页面 -->
+                <div class="page" id="calibration-page">
+                    <div class="page-header">
+                        <h2>舵机校准</h2>
+                        <p class="page-description">精确调整舵机位置</p>
+                    </div>
+
+                    <div class="calibration-layout">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>选择设备</h3>
+                            </div>
+                            <div class="card-body">
+                                <select class="select-input" id="calibration-device-select">
+                                    <option value="">请先连接设备</option>
+                                </select>
+                                <div class="calibration-actions"
+                                    style="display: flex; flex-direction: column; gap: 10px;">
+                                    <button class="btn btn-primary" id="start-calibration-btn" disabled>
+                                        <span class="btn-icon">▶️</span>
+                                        <span>进入校准模式</span>
+                                    </button>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button class="btn btn-danger" id="exit-calibration-btn" disabled
+                                            style="flex: 1;">
+                                            <span class="btn-icon">⏹️</span>
+                                            <span>退出校准</span>
+                                        </button>
+                                        <button class="btn btn-outline" id="force-exit-calibration-btn" disabled
+                                            style="flex: 0 0 auto; border-color: var(--danger-color); color: var(--danger-color);"
+                                            title="强制退出校准状态（不与设备通信）">
+                                            <span class="btn-icon">⚠️</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>舵机调整</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="servo-controls" id="servo-controls">
+                                    <!-- 舵机控制将通过JavaScript生成 -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 动作序列页面 -->
+                <div class="page" id="sequence-page">
+                    <div class="page-header">
+                        <h2>动作序列编辑器</h2>
+                        <p class="page-description">创建和执行自定义动作序列（最多可添加 10 个动作）</p>
+                    </div>
+
+                    <div class="sequence-layout">
+                        <div class="card sequence-builder">
+                            <div class="card-header">
+                                <h3>序列编辑器</h3>
+                                <button class="btn btn-sm btn-danger" id="clear-sequence-btn">清空</button>
+                            </div>
+                            <div class="card-body">
+                                <div class="sequence-timeline" id="sequence-timeline">
+                                    <div class="empty-state">
+                                        <div class="empty-icon">🎬</div>
+                                        <p>序列为空</p>
+                                        <p class="empty-hint">从右侧添加动作或移动指令</p>
+                                    </div>
+                                </div>
+                                <div class="sequence-controls" style="margin-top: 20px;">
+                                    <button class="btn btn-success btn-large" id="execute-sequence-btn" disabled
+                                        style="width: 100%;">
+                                        <span class="btn-icon">▶️</span>
+                                        <span>执行序列</span>
+                                    </button>
+                                </div>
+
+                                <div class="sequence-loop-card" style="margin-top: 20px;">
+                                    <div class="card-header" style="padding: 10px 15px;">
+                                        <h4>序列循环</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="loop-controls"
+                                            style="display: flex; flex-direction: column; gap: 15px;">
+                                            <div class="form-group">
+                                                <label for="sequence-loop-delay">循环延迟时间（秒）</label>
+                                                <input type="number" id="sequence-loop-delay" min="1" max="300"
+                                                    value="5" class="number-input">
+                                            </div>
+                                            <div class="loop-buttons" style="display: flex; gap: 10px;">
+                                                <button class="btn btn-primary btn-large" id="start-sequence-loop-btn"
+                                                    disabled style="flex: 1;">
+                                                    <span class="btn-icon">🔄</span>
+                                                    <span>开始循环</span>
+                                                </button>
+                                                <button class="btn btn-danger btn-large" id="stop-sequence-loop-btn"
+                                                    disabled style="flex: 1;">
+                                                    <span class="btn-icon">⏹️</span>
+                                                    <span>停止循环</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card sequence-options">
+                            <div class="card-header">
+                                <h3>添加指令</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="sequence-add-section" style="margin-bottom: 20px;">
+                                    <h4 style="margin-bottom: 10px;">动作</h4>
+                                    <div class="sequence-actions-list" id="sequence-actions-list">
+                                        <!-- 动作列表将通过JavaScript生成 -->
+                                    </div>
+                                </div>
+                                <div class="sequence-add-section" style="margin-bottom: 20px;">
+                                    <h4 style="margin-bottom: 10px;">移动</h4>
+                                    <div class="sequence-moves-list"
+                                        style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <button class="btn btn-sm btn-outline" data-move="F">前进</button>
+                                        <button class="btn btn-sm btn-outline" data-move="B">后退</button>
+                                        <button class="btn btn-sm btn-outline" data-move="L">左转</button>
+                                        <button class="btn btn-sm btn-outline" data-move="R">右转</button>
+                                    </div>
+                                </div>
+                                <div class="sequence-add-section">
+                                    <h4 style="margin-bottom: 10px;">延迟时间</h4>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <input type="number" class="input-field" id="sequence-delay" value="1" min="0"
+                                            max="10" step="0.5">
+                                        <span class="input-hint">秒</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- 通知容器 -->
+    <div class="notifications" id="notifications"></div>
+
+    <!-- Socket.io 客户端 -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
