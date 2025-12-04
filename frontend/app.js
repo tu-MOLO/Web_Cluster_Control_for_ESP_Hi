@@ -35,6 +35,14 @@ class App {
         this.sequence = [];
         this.joystickActive = false;
 
+        // 页面设备选择状态
+        this.pageDeviceSelections = {
+            'control': new Set(),
+            'actions': new Set(),
+            'sequence': new Set(),
+            'calibration': new Set()
+        };
+
         // 循环执行相关属性
         this.isLoopRunning = false;
         this.loopInterval = null;
@@ -51,6 +59,7 @@ class App {
         this.initSocket();
         this.initNavigation();
         this.initDeviceManager();
+        this.initPageDeviceSelectors();
         this.initJoystick();
         this.initActions();
         this.initCalibration();
@@ -123,6 +132,7 @@ class App {
             this.devices = data.devices;
             this.renderDevices();
             this.updateStatus();
+            this.updateAllPageDeviceSelectors(); // 更新所有页面的设备选择器
 
             const scanBtn = document.getElementById('scan-btn');
             const statusDiv = document.getElementById('scan-status');
@@ -176,6 +186,275 @@ class App {
                 <span class="status-dot offline"></span>
                 <span>服务器断开</span>
             `;
+        }
+    }
+
+    // ==================== 页面设备选择器 ====================
+    initPageDeviceSelectors() {
+        // 初始化所有页面的设备选择器
+        const pages = ['control', 'actions', 'sequence', 'calibration'];
+        pages.forEach(page => this.initSinglePageDeviceSelector(page));
+    }
+
+    initSinglePageDeviceSelector(pageId) {
+        const selectBtn = document.getElementById(`${pageId}-device-select`);
+        const dropdown = document.getElementById(`${pageId}-device-dropdown`);
+        const connectBtn = document.getElementById(`${pageId}-connect-btn`);
+        
+        if (!selectBtn || !dropdown) return;
+
+        // 连接按钮事件（仅非校准页面需要）
+        if (connectBtn) {
+            connectBtn.addEventListener('click', () => this.connectPageDevices(pageId));
+        }
+
+        // 下拉菜单切换
+        selectBtn.addEventListener('click', () => {
+            dropdown.classList.toggle('hidden');
+            selectBtn.classList.toggle('active');
+        });
+
+        // 点击外部关闭下拉菜单
+        document.addEventListener('click', (e) => {
+            if (!selectBtn.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.classList.add('hidden');
+                selectBtn.classList.remove('active');
+            }
+        });
+
+        // 渲染设备选择器
+        this.renderPageDeviceSelector(pageId);
+    }
+
+    renderPageDeviceSelector(pageId) {
+        const dropdown = document.getElementById(`${pageId}-device-dropdown`);
+        const selectedDisplay = document.getElementById(`${pageId}-selected-devices`);
+        const connectBtn = document.getElementById(`${pageId}-connect-btn`);
+        
+        if (!dropdown || !selectedDisplay) return;
+
+        // 清空下拉菜单
+        dropdown.innerHTML = '';
+
+        // 确定要显示的设备列表
+        let displayDevices = [];
+        if (pageId === 'calibration') {
+            // 校准页面显示所有设备
+            displayDevices = this.devices;
+        } else {
+            // 其他页面显示所有设备
+            displayDevices = this.devices;
+        }
+
+        // 如果没有设备，显示提示
+        if (displayDevices.length === 0) {
+            const emptyText = '暂无可用设备';
+            dropdown.innerHTML = `<div class="device-dropdown-item empty">${emptyText}</div>`;
+            return;
+        }
+
+        // 生成设备选项
+        displayDevices.forEach(ip => {
+            const item = document.createElement('div');
+            
+            // 校准页面使用单选逻辑，其他页面使用多选逻辑
+            if (pageId === 'calibration') {
+                item.className = `device-dropdown-item ${this.pageDeviceSelections[pageId].has(ip) ? 'selected' : ''}`;
+                item.innerHTML = `<label>${ip}</label>`;
+                
+                // 添加点击事件（单选）
+                item.addEventListener('click', () => {
+                    // 清空之前的选择
+                    this.pageDeviceSelections[pageId].clear();
+                    // 添加新选择
+                    this.pageDeviceSelections[pageId].add(ip);
+                    // 更新显示
+                    this.renderPageDeviceSelector(pageId);
+                    // 关闭下拉菜单
+                    dropdown.classList.add('hidden');
+                    const selectBtn = document.getElementById(`${pageId}-device-select`);
+                    selectBtn.classList.remove('active');
+                    // 触发校准设备选择变化
+                    this.onCalibrationDeviceChange(ip);
+                    // 自动连接到所选设备
+                    this.autoConnectCalibrationDevice(ip);
+                });
+            } else {
+                item.className = `device-dropdown-item ${this.pageDeviceSelections[pageId].has(ip) ? 'selected' : ''}`;
+                item.innerHTML = `
+                    <input type="checkbox" id="${pageId}-device-${ip}" ${this.pageDeviceSelections[pageId].has(ip) ? 'checked' : ''}>
+                    <label for="${pageId}-device-${ip}">${ip}</label>
+                `;
+                
+                // 添加点击事件
+                item.addEventListener('click', (e) => {
+                    // 防止复选框重复触发
+                    if (e.target.tagName === 'INPUT') return;
+                    
+                    const checkbox = item.querySelector('input');
+                    checkbox.checked = !checkbox.checked;
+                    this.togglePageDeviceSelection(pageId, ip, checkbox.checked);
+                });
+                
+                // 添加复选框事件
+                const checkbox = item.querySelector('input');
+                checkbox.addEventListener('change', () => {
+                    this.togglePageDeviceSelection(pageId, ip, checkbox.checked);
+                });
+            }
+            
+            dropdown.appendChild(item);
+        });
+
+        // 更新已选设备显示
+        this.updateSelectedDevicesDisplay(pageId);
+    }
+
+    togglePageDeviceSelection(pageId, deviceIp, isSelected) {
+        if (isSelected) {
+            this.pageDeviceSelections[pageId].add(deviceIp);
+        } else {
+            this.pageDeviceSelections[pageId].delete(deviceIp);
+        }
+        this.updateSelectedDevicesDisplay(pageId);
+    }
+
+    updateSelectedDevicesDisplay(pageId) {
+        const selectedDevices = this.pageDeviceSelections[pageId];
+        const selectedDisplay = document.getElementById(`${pageId}-selected-devices`);
+        const connectBtn = document.getElementById(`${pageId}-connect-btn`);
+        
+        if (!selectedDisplay) return;
+
+        // 更新已选设备显示
+        if (selectedDevices.size === 0) {
+            selectedDisplay.textContent = '请选择设备';
+        } else if (selectedDevices.size === 1) {
+            selectedDisplay.textContent = `${Array.from(selectedDevices)[0]}`;
+        } else {
+            selectedDisplay.textContent = `${selectedDevices.size} 台设备`;
+        }
+        
+        // 更新连接按钮状态（仅非校准页面需要）
+        if (connectBtn) {
+            connectBtn.disabled = selectedDevices.size === 0;
+        }
+    }
+
+    updateAllPageDeviceSelectors() {
+        // 更新所有页面的设备选择器
+        const pages = ['control', 'actions', 'sequence', 'calibration'];
+        pages.forEach(page => this.renderPageDeviceSelector(page));
+    }
+
+    async connectPageDevices(pageId) {
+        const selectedDevices = Array.from(this.pageDeviceSelections[pageId]);
+        if (selectedDevices.length === 0) return;
+
+        const connectBtn = document.getElementById(`${pageId}-connect-btn`);
+        const statusEl = document.getElementById(`${pageId}-connection-status`);
+        const originalText = connectBtn ? connectBtn.innerHTML : '';
+        
+        if (connectBtn) {
+            // 更新UI状态
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = '<span class="btn-icon">⏳</span><span>连接中...</span>';
+        }
+        
+        if (statusEl) {
+            statusEl.innerHTML = '<span class="status-text status-connecting">正在连接设备...</span>';
+        }
+
+        try {
+            // 调用API连接设备
+            const response = await fetch(`${API_BASE}/devices/select`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ devices: selectedDevices })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                // 更新已连接设备列表
+                this.connectedDevices = new Set(data.success_devices);
+                this.renderConnectedDevices();
+                this.updateStatus();
+                this.updateCalibrationSelect();
+                
+                // 构建详细反馈消息
+                let msg = '';
+                let statusType = 'success';
+                
+                if (data.success_devices.length > 0) {
+                    msg += `成功连接 ${data.success_devices.length} 台设备: ${data.success_devices.join(', ')}.`;
+                }
+                if (data.failed_devices.length > 0) {
+                    msg += ` 连接失败: ${data.failed_devices.join(', ')}.`;
+                    statusType = 'warning';
+                }
+                
+                // 显示连接状态
+                if (statusEl) {
+                    statusEl.innerHTML = `<span class="status-text status-${statusType}">${msg}</span>`;
+                }
+                this.showNotification(msg, statusType);
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            // 显示连接失败
+            const errorMsg = `连接失败: ${error.message}`;
+            if (statusEl) {
+                statusEl.innerHTML = `<span class="status-text status-error">${errorMsg}</span>`;
+            }
+            this.showNotification(errorMsg, 'error');
+        } finally {
+            // 恢复按钮状态
+            if (connectBtn) {
+                connectBtn.disabled = false;
+                connectBtn.innerHTML = originalText;
+            }
+        }
+    }
+
+    // 自动连接校准设备
+    async autoConnectCalibrationDevice(deviceIp) {
+        try {
+            // 调用API连接设备
+            const response = await fetch(`${API_BASE}/devices/select`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ devices: [deviceIp] })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                // 更新已连接设备列表
+                this.connectedDevices = new Set(data.success_devices);
+                this.renderConnectedDevices();
+                this.updateStatus();
+                this.updateCalibrationSelect();
+                
+                // 构建详细反馈消息
+                let msg = '';
+                let statusType = 'success';
+                
+                if (data.success_devices.length > 0) {
+                    msg += `成功连接设备: ${data.success_devices.join(', ')}.`;
+                }
+                if (data.failed_devices.length > 0) {
+                    msg += ` 连接失败: ${data.failed_devices.join(', ')}.`;
+                    statusType = 'warning';
+                }
+                
+                this.showNotification(msg, statusType);
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            // 显示连接失败
+            const errorMsg = `连接失败: ${error.message}`;
+            this.showNotification(errorMsg, 'error');
         }
     }
 
@@ -249,6 +528,7 @@ class App {
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 确保校准下拉框有值
+                this.updateAllPageDeviceSelectors(); // 更新所有页面的设备选择器
 
                 // 恢复校准状态
                 if (data.calibration_device) {
@@ -264,16 +544,20 @@ class App {
         const startBtn = document.getElementById('start-calibration-btn');
         const exitBtn = document.getElementById('exit-calibration-btn');
         const forceExitBtn = document.getElementById('force-exit-calibration-btn');
-        const select = document.getElementById('calibration-device-select');
+        const selectBtn = document.getElementById('calibration-device-select');
 
         // 选中当前校准设备
-        select.value = deviceIp;
+        this.pageDeviceSelections['calibration'].clear();
+        this.pageDeviceSelections['calibration'].add(deviceIp);
+        
+        // 更新设备选择器显示
+        this.renderPageDeviceSelector('calibration');
 
         // 更新UI状态为"校准中"
         startBtn.disabled = true;
         exitBtn.disabled = false;
         if (forceExitBtn) forceExitBtn.disabled = false;
-        select.disabled = true;
+        selectBtn.disabled = true;
 
         // 启用舵机控制
         document.querySelectorAll('.servo-btn').forEach(el => el.disabled = false);
@@ -827,7 +1111,6 @@ class App {
         const startBtn = document.getElementById('start-calibration-btn');
         const exitBtn = document.getElementById('exit-calibration-btn');
         const forceExitBtn = document.getElementById('force-exit-calibration-btn');
-        const select = document.getElementById('calibration-device-select');
         const servoControls = document.getElementById('servo-controls');
 
         // 生成舵机控制滑块
@@ -892,26 +1175,15 @@ class App {
             });
         });
 
-        // 监听设备选择变化
-        select.addEventListener('change', () => {
-            startBtn.disabled = !select.value;
-        });
-
-
-
         // 进入校准模式
         startBtn.addEventListener('click', async () => {
-            const device = select.value;
-            if (!device) {
+            // 从新的设备选择器中获取选中的设备
+            const selectedDevices = this.pageDeviceSelections['calibration'];
+            if (selectedDevices.size === 0) {
                 this.showNotification('请选择要校准的设备', 'warning');
                 return;
             }
-
-            // 检查是否已连接
-            if (this.connectedDevices.size === 0) {
-                this.showNotification('请先连接设备', 'warning');
-                return;
-            }
+            const device = Array.from(selectedDevices)[0];
 
             startBtn.disabled = true;
 
@@ -927,7 +1199,10 @@ class App {
                     this.showNotification('已进入校准模式', 'success');
                     exitBtn.disabled = false;
                     if (forceExitBtn) forceExitBtn.disabled = false;
-                    select.disabled = true;
+
+                    // 禁用设备选择器
+                    const selectBtn = document.getElementById('calibration-device-select');
+                    selectBtn.disabled = true;
 
                     // 启用舵机控制
                     document.querySelectorAll('.servo-btn').forEach(el => el.disabled = false);
@@ -963,7 +1238,10 @@ class App {
                     startBtn.disabled = false;
                     exitBtn.disabled = true;
                     if (forceExitBtn) forceExitBtn.disabled = true;
-                    select.disabled = false;
+
+                    // 启用设备选择器
+                    const selectBtn = document.getElementById('calibration-device-select');
+                    selectBtn.disabled = false;
 
                     // 禁用舵机控制
                     document.querySelectorAll('.servo-btn').forEach(el => el.disabled = true);
@@ -1004,16 +1282,8 @@ class App {
     }
 
     updateCalibrationSelect() {
-        const select = document.getElementById('calibration-device-select');
-        select.innerHTML = '<option value="">请选择设备...</option>';
-
-        // 仅显示已连接的设备
-        this.connectedDevices.forEach(ip => {
-            const option = document.createElement('option');
-            option.value = ip;
-            option.textContent = ip;
-            select.appendChild(option);
-        });
+        // 更新校准页面的设备选择器
+        this.renderPageDeviceSelector('calibration');
     }
 
     async adjustServo(servo, value) {
@@ -1026,6 +1296,11 @@ class App {
         } catch (error) {
             this.showNotification(`调整失败: ${error.message}`, 'error');
         }
+    }
+
+    onCalibrationDeviceChange(deviceIp) {
+        const startBtn = document.getElementById('start-calibration-btn');
+        startBtn.disabled = !deviceIp;
     }
 
     // ==================== 动作序列 ====================

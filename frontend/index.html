@@ -163,6 +163,33 @@
                         <p class="page-description">实时控制已连接设备的移动</p>
                     </div>
 
+                    <!-- 设备选择组件 -->
+                    <div class="card device-selector-card">
+                        <div class="card-body">
+                            <div class="device-selector">
+                                <div class="device-selector-header">
+                                    <h3 class="device-selector-title">设备选择</h3>
+                                    <button class="btn btn-primary connect-devices-btn" id="control-connect-btn">
+                                        <span class="btn-icon">🔗</span>
+                                        <span>连接选中设备</span>
+                                    </button>
+                                </div>
+                                <div class="device-selector-content">
+                                    <div class="device-selector-dropdown">
+                                        <button class="btn btn-outline device-select-btn" id="control-device-select">
+                                            <span id="control-selected-devices">请选择设备</span>
+                                            <span class="dropdown-icon">▼</span>
+                                        </button>
+                                        <div id="control-device-dropdown" class="device-dropdown hidden">
+                                            <!-- 设备选项将通过JavaScript生成 -->
+                                        </div>
+                                    </div>
+                                    <div class="device-selector-status" id="control-connection-status"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="control-grid">
                         <div class="card joystick-card">
                             <div class="card-body">
@@ -221,6 +248,33 @@
                         <p class="page-description">执行预设的动作指令</p>
                     </div>
 
+                    <!-- 设备选择组件 -->
+                    <div class="card device-selector-card">
+                        <div class="card-body">
+                            <div class="device-selector">
+                                <div class="device-selector-header">
+                                    <h3 class="device-selector-title">设备选择</h3>
+                                    <button class="btn btn-primary connect-devices-btn" id="actions-connect-btn">
+                                        <span class="btn-icon">🔗</span>
+                                        <span>连接选中设备</span>
+                                    </button>
+                                </div>
+                                <div class="device-selector-content">
+                                    <div class="device-selector-dropdown">
+                                        <button class="btn btn-outline device-select-btn" id="actions-device-select">
+                                            <span id="actions-selected-devices">请选择设备</span>
+                                            <span class="dropdown-icon">▼</span>
+                                        </button>
+                                        <div id="actions-device-dropdown" class="device-dropdown hidden">
+                                            <!-- 设备选项将通过JavaScript生成 -->
+                                        </div>
+                                    </div>
+                                    <div class="device-selector-status" id="actions-connection-status"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="actions-grid" id="actions-grid">
                         <!-- 动作按钮将通过JavaScript动态生成 -->
                     </div>
@@ -277,16 +331,27 @@
                     </div>
 
                     <div class="calibration-layout">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3>选择设备</h3>
-                            </div>
+                        <div class="card device-selector-card">
                             <div class="card-body">
-                                <select class="select-input" id="calibration-device-select">
-                                    <option value="">请先连接设备</option>
-                                </select>
+                                <div class="device-selector">
+                                    <div class="device-selector-header">
+                                        <h3 class="device-selector-title">设备选择</h3>
+                                    </div>
+                                    <div class="device-selector-content">
+                                        <div class="device-selector-dropdown">
+                                            <button class="btn btn-outline device-select-btn" id="calibration-device-select">
+                                                <span id="calibration-selected-devices">请选择设备</span>
+                                                <span class="dropdown-icon">▼</span>
+                                            </button>
+                                            <div id="calibration-device-dropdown" class="device-dropdown hidden">
+                                                <!-- 设备选项将通过JavaScript生成 -->
+                                            </div>
+                                        </div>
+                                        <div class="device-selector-status" id="calibration-connection-status"></div>
+                                    </div>
+                                </div>
                                 <div class="calibration-actions"
-                                    style="display: flex; flex-direction: column; gap: 10px;">
+                                    style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
                                     <button class="btn btn-primary" id="start-calibration-btn" disabled>
                                         <span class="btn-icon">▶️</span>
                                         <span>进入校准模式</span>
@@ -325,6 +390,33 @@
                     <div class="page-header">
                         <h2>动作序列编辑器</h2>
                         <p class="page-description">创建和执行自定义动作序列（最多可添加 10 个动作）</p>
+                    </div>
+
+                    <!-- 设备选择组件 -->
+                    <div class="card device-selector-card">
+                        <div class="card-body">
+                            <div class="device-selector">
+                                <div class="device-selector-header">
+                                    <h3 class="device-selector-title">设备选择</h3>
+                                    <button class="btn btn-primary connect-devices-btn" id="sequence-connect-btn">
+                                        <span class="btn-icon">🔗</span>
+                                        <span>连接选中设备</span>
+                                    </button>
+                                </div>
+                                <div class="device-selector-content">
+                                    <div class="device-selector-dropdown">
+                                        <button class="btn btn-outline device-select-btn" id="sequence-device-select">
+                                            <span id="sequence-selected-devices">请选择设备</span>
+                                            <span class="dropdown-icon">▼</span>
+                                        </button>
+                                        <div id="sequence-device-dropdown" class="device-dropdown hidden">
+                                            <!-- 设备选项将通过JavaScript生成 -->
+                                        </div>
+                                    </div>
+                                    <div class="device-selector-status" id="sequence-connection-status"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="sequence-layout">
