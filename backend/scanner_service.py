@@ -3,6 +3,7 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+import sys
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,14 @@ logger = logging.getLogger(__name__)
 SCAN_PORT = 80
 SCAN_TIMEOUT = 0.8
 SCAN_THREADS = 50
-DEVICES_FILE = os.path.join(os.path.dirname(__file__), "devices.json")
+
+# 设备文件路径，支持PyInstaller打包
+if getattr(sys, 'frozen', False):
+    # PyInstaller打包环境
+    DEVICES_FILE = os.path.join(os.path.dirname(sys.executable), "devices.json")
+else:
+    # 开发环境
+    DEVICES_FILE = os.path.join(os.path.dirname(__file__), "devices.json")
 
 
 class ScannerService:

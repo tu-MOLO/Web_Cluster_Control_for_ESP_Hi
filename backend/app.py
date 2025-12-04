@@ -3,6 +3,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import json
 import os
+import sys
 from typing import List, Dict, Optional
 from datetime import datetime
 import logging
@@ -12,19 +13,31 @@ from device_manager import DeviceManager
 from scanner_service import ScannerService
 from calibration_service import CalibrationService
 
-# 获取前端目录的绝对路径
-current_dir = os.path.dirname(os.path.abspath(__file__))
-frontend_dir = os.path.join(os.path.dirname(current_dir), 'frontend')
+# 获取前端目录的绝对路径，支持PyInstaller打包
+if getattr(sys, 'frozen', False):
+    # PyInstaller打包环境
+    base_dir = sys._MEIPASS
+    frontend_dir = os.path.join(base_dir, 'frontend')
+    backend_dir = os.path.join(base_dir, 'backend')
+else:
+    # 开发环境
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(current_dir)
+    frontend_dir = os.path.join(base_dir, 'frontend')
+    backend_dir = current_dir
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # 创建Flask应用，指定静态文件目录和URL路径
 app = Flask(__name__, static_folder=frontend_dir, static_url_path='')
 app.config['SECRET_KEY'] = 'esp-hi-secret-key-2025'
 CORS(app)  # 允许跨域请求
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 明确使用threading异步模式，确保打包后能正常运行
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+logger.info("SocketIO initialized with threading async mode")
 
 # 全局服务实例
 scanner_service = ScannerService()
