@@ -124,13 +124,36 @@ class ScannerService:
             return False
 
     def save_devices(self, devices: list):
-        """保存设备列表到文件"""
+        """保存设备列表到文件，仅新增不存在的记录"""
         try:
-            with open(self.devices_file, "w") as f:
-                json.dump(devices, f, indent=2)
-            logger.info(f"设备列表已保存到 {self.devices_file}")
+            # 先加载现有设备列表
+            existing_devices = self.load_devices()
+            
+            # 创建现有设备的集合，用于快速查找
+            existing_ips = set(existing_devices)
+            
+            # 过滤出新增的设备（不在现有列表中的设备）
+            new_devices = existing_devices.copy()
+            for device in devices:
+                if device not in existing_ips:
+                    new_devices.append(device)
+                    existing_ips.add(device)
+            
+            # 原子性保存：先写入临时文件，再重命名替换原文件
+            temp_file = self.devices_file + ".tmp"
+            with open(temp_file, "w") as f:
+                json.dump(new_devices, f, indent=2)
+            
+            # 使用os.replace实现原子性替换，确保要么完全成功要么完全失败
+            os.replace(temp_file, self.devices_file)
+            
+            logger.info(f"设备列表已保存到 {self.devices_file}，新增了 {len(new_devices) - len(existing_devices)} 个设备")
         except Exception as e:
             logger.error(f"保存设备列表失败: {str(e)}")
+            # 清理临时文件
+            temp_file = self.devices_file + ".tmp"
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
             raise
 
     def load_devices(self) -> list:

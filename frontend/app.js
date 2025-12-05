@@ -35,6 +35,11 @@ class App {
         this.sequence = [];
         this.joystickActive = false;
 
+        // Device Management
+        this.allDevices = new Set();
+        this.onlineDevices = new Set();
+        this.showAllDevices = false;
+
         // 页面设备选择状态
         this.pageDeviceSelections = {
             'control': new Set(),
@@ -129,7 +134,43 @@ class App {
         });
 
         this.socket.on('scan_complete', (data) => {
-            this.devices = data.devices;
+            const currentOnline = new Set(data.devices);
+
+            // Check for lost connections (connected devices that are no longer online)
+            const lostConnections = [];
+            this.connectedDevices.forEach(ip => {
+                if (!currentOnline.has(ip)) {
+                    lostConnections.push(ip);
+                }
+            });
+
+            // Process lost connections
+            if (lostConnections.length > 0) {
+                lostConnections.forEach(ip => {
+                    this.connectedDevices.delete(ip);
+                    this.selectedDevices.delete(ip);
+                    // Notify backend to clean up connection state
+                    fetch(`${API_BASE}/devices/disconnect`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ip })
+                    }).catch(e => console.error(`Auto-disconnect failed for ${ip}:`, e));
+                });
+
+                this.showNotification(`${lostConnections.length} 个设备已断开连接（离线）`, 'warning');
+
+                // Update connected devices UI immediately
+                this.renderConnectedDevices();
+                this.syncPageSelections(); // Sync dropdowns after auto-disconnect
+            }
+
+            // Update online devices
+            this.onlineDevices = currentOnline;
+            // Add to all devices
+            data.devices.forEach(ip => this.allDevices.add(ip));
+
+            this.devices = Array.from(this.allDevices); // Keep compatibility if this.devices is used elsewhere
+
             this.renderDevices();
             this.updateStatus();
             this.updateAllPageDeviceSelectors(); // 更新所有页面的设备选择器
@@ -200,7 +241,7 @@ class App {
         const selectBtn = document.getElementById(`${pageId}-device-select`);
         const dropdown = document.getElementById(`${pageId}-device-dropdown`);
         const connectBtn = document.getElementById(`${pageId}-connect-btn`);
-        
+
         if (!selectBtn || !dropdown) return;
 
         // 连接按钮事件（仅非校准页面需要）
@@ -230,38 +271,43 @@ class App {
         const dropdown = document.getElementById(`${pageId}-device-dropdown`);
         const selectedDisplay = document.getElementById(`${pageId}-selected-devices`);
         const connectBtn = document.getElementById(`${pageId}-connect-btn`);
-        
+
         if (!dropdown || !selectedDisplay) return;
 
         // 清空下拉菜单
         dropdown.innerHTML = '';
 
-        // 确定要显示的设备列表
-        let displayDevices = [];
-        if (pageId === 'calibration') {
-            // 校准页面显示所有设备
-            displayDevices = this.devices;
-        } else {
-            // 其他页面显示所有设备
-            displayDevices = this.devices;
-        }
+        // 所有页面只显示在线设备
+        const displayDevices = Array.from(this.onlineDevices);
 
-        // 如果没有设备，显示提示
+        // 如果没有在线设备，显示提示
         if (displayDevices.length === 0) {
-            const emptyText = '暂无可用设备';
+            const emptyText = '暂无在线设备';
             dropdown.innerHTML = `<div class="device-dropdown-item empty">${emptyText}</div>`;
             return;
+        }
+
+        // 生成设备选项前，先将已连接设备添加到选择中
+        if (pageId !== 'calibration') {
+            // 清空之前的选择
+            this.pageDeviceSelections[pageId].clear();
+            // 将所有已连接设备添加到选择中
+            this.connectedDevices.forEach(ip => {
+                if (this.onlineDevices.has(ip)) {
+                    this.pageDeviceSelections[pageId].add(ip);
+                }
+            });
         }
 
         // 生成设备选项
         displayDevices.forEach(ip => {
             const item = document.createElement('div');
-            
+
             // 校准页面使用单选逻辑，其他页面使用多选逻辑
             if (pageId === 'calibration') {
                 item.className = `device-dropdown-item ${this.pageDeviceSelections[pageId].has(ip) ? 'selected' : ''}`;
                 item.innerHTML = `<label>${ip}</label>`;
-                
+
                 // 添加点击事件（单选）
                 item.addEventListener('click', () => {
                     // 清空之前的选择
@@ -280,29 +326,40 @@ class App {
                     this.autoConnectCalibrationDevice(ip);
                 });
             } else {
-                item.className = `device-dropdown-item ${this.pageDeviceSelections[pageId].has(ip) ? 'selected' : ''}`;
+                // 非校准页面：复选框状态基于是否已连接
+                const isConnected = this.connectedDevices.has(ip);
+                const isSelected = this.pageDeviceSelections[pageId].has(ip);
+                item.className = `device-dropdown-item ${isSelected ? 'selected' : ''}`;
                 item.innerHTML = `
-                    <input type="checkbox" id="${pageId}-device-${ip}" ${this.pageDeviceSelections[pageId].has(ip) ? 'checked' : ''}>
+                    <input type="checkbox" id="${pageId}-device-${ip}" ${isSelected ? 'checked' : ''}>
                     <label for="${pageId}-device-${ip}">${ip}</label>
                 `;
-                
+
                 // 添加点击事件
                 item.addEventListener('click', (e) => {
                     // 防止复选框重复触发
                     if (e.target.tagName === 'INPUT') return;
-                    
+
                     const checkbox = item.querySelector('input');
-                    checkbox.checked = !checkbox.checked;
-                    this.togglePageDeviceSelection(pageId, ip, checkbox.checked);
+                    // 直接将当前设备加入选择，不管之前的状态
+                    checkbox.checked = true;
+                    this.pageDeviceSelections[pageId].add(ip);
+                    this.updateSelectedDevicesDisplay(pageId);
                 });
-                
+
                 // 添加复选框事件
                 const checkbox = item.querySelector('input');
                 checkbox.addEventListener('change', () => {
-                    this.togglePageDeviceSelection(pageId, ip, checkbox.checked);
+                    // 复选框状态变化时，直接更新选择状态
+                    if (checkbox.checked) {
+                        this.pageDeviceSelections[pageId].add(ip);
+                    } else {
+                        this.pageDeviceSelections[pageId].delete(ip);
+                    }
+                    this.updateSelectedDevicesDisplay(pageId);
                 });
             }
-            
+
             dropdown.appendChild(item);
         });
 
@@ -323,7 +380,7 @@ class App {
         const selectedDevices = this.pageDeviceSelections[pageId];
         const selectedDisplay = document.getElementById(`${pageId}-selected-devices`);
         const connectBtn = document.getElementById(`${pageId}-connect-btn`);
-        
+
         if (!selectedDisplay) return;
 
         // 更新已选设备显示
@@ -334,7 +391,7 @@ class App {
         } else {
             selectedDisplay.textContent = `${selectedDevices.size} 台设备`;
         }
-        
+
         // 更新连接按钮状态（仅非校准页面需要）
         if (connectBtn) {
             connectBtn.disabled = selectedDevices.size === 0;
@@ -352,17 +409,12 @@ class App {
         if (selectedDevices.length === 0) return;
 
         const connectBtn = document.getElementById(`${pageId}-connect-btn`);
-        const statusEl = document.getElementById(`${pageId}-connection-status`);
         const originalText = connectBtn ? connectBtn.innerHTML : '';
-        
+
         if (connectBtn) {
             // 更新UI状态
             connectBtn.disabled = true;
             connectBtn.innerHTML = '<span class="btn-icon">⏳</span><span>连接中...</span>';
-        }
-        
-        if (statusEl) {
-            statusEl.innerHTML = '<span class="status-text status-connecting">正在连接设备...</span>';
         }
 
         try {
@@ -375,16 +427,25 @@ class App {
             const data = await response.json();
 
             if (data.success) {
-                // 更新已连接设备列表
-                this.connectedDevices = new Set(data.success_devices);
-                this.renderConnectedDevices();
-                this.updateStatus();
+                // 如果不是校准页面，则同步更新主设备管理界面的连接状态
+                if (pageId !== 'calibration') {
+                    this.connectedDevices = new Set(data.success_devices);
+                    this.selectedDevices = new Set(data.success_devices); // 同步选中状态
+                    this.renderConnectedDevices();
+                    this.renderDevices(); // 刷新设备列表以显示选中状态
+                    this.updateStatus();
+                }
+
+                // 始终更新校准下拉框（因为可能有新设备连接）
                 this.updateCalibrationSelect();
-                
+                this.syncPageSelections(); // Sync dropdowns with new connection state
+                this.updateAllPageDeviceSelectors(); // 确保所有页面设备选择器都更新
+
+
                 // 构建详细反馈消息
                 let msg = '';
                 let statusType = 'success';
-                
+
                 if (data.success_devices.length > 0) {
                     msg += `成功连接 ${data.success_devices.length} 台设备: ${data.success_devices.join(', ')}.`;
                 }
@@ -392,11 +453,7 @@ class App {
                     msg += ` 连接失败: ${data.failed_devices.join(', ')}.`;
                     statusType = 'warning';
                 }
-                
-                // 显示连接状态
-                if (statusEl) {
-                    statusEl.innerHTML = `<span class="status-text status-${statusType}">${msg}</span>`;
-                }
+
                 this.showNotification(msg, statusType);
             } else {
                 throw new Error(data.error);
@@ -404,9 +461,6 @@ class App {
         } catch (error) {
             // 显示连接失败
             const errorMsg = `连接失败: ${error.message}`;
-            if (statusEl) {
-                statusEl.innerHTML = `<span class="status-text status-error">${errorMsg}</span>`;
-            }
             this.showNotification(errorMsg, 'error');
         } finally {
             // 恢复按钮状态
@@ -415,6 +469,17 @@ class App {
                 connectBtn.innerHTML = originalText;
             }
         }
+    }
+
+
+
+    syncPageSelections() {
+        // 重新渲染所有设备选择器以反映最新的连接状态
+        // 复选框状态现在直接基于 connectedDevices，无需手动同步 pageDeviceSelections
+        const pagesToSync = ['control', 'actions', 'sequence'];
+        pagesToSync.forEach(page => {
+            this.renderPageDeviceSelector(page);
+        });
     }
 
     // 自动连接校准设备
@@ -434,11 +499,13 @@ class App {
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect();
-                
+                this.syncPageSelections(); // Sync dropdowns with new connection state
+                this.updateAllPageDeviceSelectors(); // 确保所有页面设备选择器都更新
+
                 // 构建详细反馈消息
                 let msg = '';
                 let statusType = 'success';
-                
+
                 if (data.success_devices.length > 0) {
                     msg += `成功连接设备: ${data.success_devices.join(', ')}.`;
                 }
@@ -446,7 +513,7 @@ class App {
                     msg += ` 连接失败: ${data.failed_devices.join(', ')}.`;
                     statusType = 'warning';
                 }
-                
+
                 this.showNotification(msg, statusType);
             } else {
                 throw new Error(data.error);
@@ -487,9 +554,17 @@ class App {
     initDeviceManager() {
         const scanBtn = document.getElementById('scan-btn');
         const connectBtn = document.getElementById('connect-selected-btn');
+        const toggle = document.getElementById('show-all-toggle');
 
         scanBtn.addEventListener('click', () => this.startScan());
         connectBtn.addEventListener('click', () => this.connectSelectedDevices());
+
+        if (toggle) {
+            toggle.addEventListener('change', (e) => {
+                this.showAllDevices = e.target.checked;
+                this.renderDevices();
+            });
+        }
     }
 
     async startScan() {
@@ -516,10 +591,13 @@ class App {
             const data = await response.json();
             if (data.success) {
                 this.devices = data.devices;
+                this.allDevices = new Set(data.devices);
 
                 // 恢复已连接设备状态
                 if (data.connected_devices && data.connected_devices.length > 0) {
                     this.connectedDevices = new Set(data.connected_devices);
+                    // Assume connected devices are online
+                    data.connected_devices.forEach(ip => this.onlineDevices.add(ip));
                     // 同时将这些设备标记为选中，方便用户操作
                     this.selectedDevices = new Set(data.connected_devices);
                 }
@@ -528,6 +606,7 @@ class App {
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 确保校准下拉框有值
+                this.syncPageSelections(); // Sync dropdowns with loaded connections
                 this.updateAllPageDeviceSelectors(); // 更新所有页面的设备选择器
 
                 // 恢复校准状态
@@ -549,7 +628,7 @@ class App {
         // 选中当前校准设备
         this.pageDeviceSelections['calibration'].clear();
         this.pageDeviceSelections['calibration'].add(deviceIp);
-        
+
         // 更新设备选择器显示
         this.renderPageDeviceSelector('calibration');
 
@@ -570,10 +649,37 @@ class App {
         const list = document.getElementById('devices-list');
         const badge = document.getElementById('devices-badge');
         const connectBtn = document.getElementById('connect-selected-btn');
+        const title = document.getElementById('discovered-devices-title');
 
-        badge.textContent = this.devices.length;
+        // Update Title
+        if (title) {
+            title.textContent = this.showAllDevices ? "全部设备" : "已发现设备";
+        }
 
-        if (this.devices.length === 0) {
+        // Filter devices
+        let devicesToShow = [];
+        if (this.showAllDevices) {
+            devicesToShow = Array.from(this.allDevices);
+        } else {
+            devicesToShow = Array.from(this.onlineDevices);
+        }
+
+        // Sort devices: Connected > Online > Offline, then by IP
+        devicesToShow.sort((a, b) => {
+            const aConnected = this.connectedDevices.has(a) ? 1 : 0;
+            const bConnected = this.connectedDevices.has(b) ? 1 : 0;
+            if (aConnected !== bConnected) return bConnected - aConnected;
+
+            const aOnline = this.onlineDevices.has(a) ? 1 : 0;
+            const bOnline = this.onlineDevices.has(b) ? 1 : 0;
+            if (aOnline !== bOnline) return bOnline - aOnline;
+
+            return a.localeCompare(b, undefined, { numeric: true });
+        });
+
+        badge.textContent = devicesToShow.length;
+
+        if (devicesToShow.length === 0) {
             list.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">📡</div>
@@ -586,9 +692,18 @@ class App {
         }
 
         list.innerHTML = '';
-        this.devices.forEach(ip => {
+        devicesToShow.forEach(ip => {
+            const isOnline = this.onlineDevices.has(ip);
+            const isSelected = this.selectedDevices.has(ip);
+
             const item = document.createElement('div');
-            item.className = `device-item ${this.selectedDevices.has(ip) ? 'selected' : ''}`;
+            let classes = ['device-item'];
+            if (isSelected) classes.push('selected');
+            if (isOnline) classes.push('online');
+            else classes.push('offline');
+
+            item.className = classes.join(' ');
+
             item.innerHTML = `
                 <div class="device-info">
                     <div class="device-icon">🤖</div>
@@ -636,6 +751,8 @@ class App {
 
             if (data.success) {
                 this.devices = this.devices.filter(d => d !== ip);
+                this.allDevices.delete(ip);
+                this.onlineDevices.delete(ip);
                 this.selectedDevices.delete(ip);
                 this.connectedDevices.delete(ip);
                 this.renderDevices();
@@ -673,6 +790,8 @@ class App {
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 更新校准下拉框
+                this.syncPageSelections(); // Sync dropdowns with new connection state
+                this.updateAllPageDeviceSelectors(); // 确保所有页面设备选择器都更新
 
                 // 构建详细反馈消息
                 let msg = '';
@@ -749,8 +868,11 @@ class App {
                 this.connectedDevices.delete(ip);
                 this.selectedDevices.delete(ip);
                 this.renderConnectedDevices();
+                this.renderDevices(); // Update discovered devices list to reflect status change
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 更新校准下拉框
+                this.syncPageSelections(); // Sync dropdowns with new connection state
+                this.updateAllPageDeviceSelectors(); // 确保所有页面设备选择器都更新
                 this.showNotification(`设备 ${ip} 已断开连接`, 'success');
             } else {
                 throw new Error(data.error);

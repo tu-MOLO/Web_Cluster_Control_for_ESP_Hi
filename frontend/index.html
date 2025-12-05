@@ -7,6 +7,7 @@
     <title>ESP-HI 智能控制中心</title>
     <meta name="description" content="ESP-HI舵机狗智能控制软件">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles_toggle.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
@@ -116,7 +117,19 @@
                                 style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                                 <!-- 已发现设备 -->
                                 <div class="devices-column">
-                                    <h4 style="margin-bottom: 10px; color: var(--text-secondary);">已发现设备</h4>
+                                    <div class="devices-header"
+                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <h4 id="discovered-devices-title"
+                                            style="color: var(--text-secondary); margin: 0;">已发现设备</h4>
+                                        <div class="toggle-container" style="display: flex; align-items: center;">
+                                            <span class="toggle-label"
+                                                style="font-size: 0.8rem; color: var(--text-secondary); margin-right: 8px;">显示所有</span>
+                                            <label class="switch">
+                                                <input type="checkbox" id="show-all-toggle">
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+                                    </div>
                                     <div class="devices-list" id="devices-list">
                                         <div class="empty-state">
                                             <div class="empty-icon">📡</div>
@@ -184,7 +197,7 @@
                                             <!-- 设备选项将通过JavaScript生成 -->
                                         </div>
                                     </div>
-                                    <div class="device-selector-status" id="control-connection-status"></div>
+
                                 </div>
                             </div>
                         </div>
@@ -269,7 +282,7 @@
                                             <!-- 设备选项将通过JavaScript生成 -->
                                         </div>
                                     </div>
-                                    <div class="device-selector-status" id="actions-connection-status"></div>
+
                                 </div>
                             </div>
                         </div>
@@ -339,7 +352,8 @@
                                     </div>
                                     <div class="device-selector-content">
                                         <div class="device-selector-dropdown">
-                                            <button class="btn btn-outline device-select-btn" id="calibration-device-select">
+                                            <button class="btn btn-outline device-select-btn"
+                                                id="calibration-device-select">
                                                 <span id="calibration-selected-devices">请选择设备</span>
                                                 <span class="dropdown-icon">▼</span>
                                             </button>
@@ -413,7 +427,7 @@
                                             <!-- 设备选项将通过JavaScript生成 -->
                                         </div>
                                     </div>
-                                    <div class="device-selector-status" id="sequence-connection-status"></div>
+
                                 </div>
                             </div>
                         </div>

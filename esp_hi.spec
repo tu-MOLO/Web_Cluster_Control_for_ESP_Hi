@@ -11,7 +11,7 @@ added_files = [
 # 主程序配置
 a = Analysis(
     ['backend/app.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=added_files,
     hiddenimports=[
@@ -22,8 +22,13 @@ a = Analysis(
         'engineio',
         'engineio.async_drivers.threading',
         'eventlet',
+        'eventlet.greenio',
+        'eventlet.green',
         'requests',
         'urllib3',
+        'device_manager',
+        'scanner_service',
+        'calibration_service',
     ],
     hookspath=[],
     hooksconfig={},
