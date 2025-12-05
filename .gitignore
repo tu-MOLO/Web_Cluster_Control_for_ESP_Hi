@@ -52,6 +52,7 @@ build/
 
 # You can still ignore specific files within dist if needed
 # e.g., dist/*.log
+dist/ESP_HI_Control.exe
 
 # Environment variables
 .env
