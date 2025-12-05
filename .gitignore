@@ -69,3 +69,6 @@ build/
 
 # Trae IDE files
 .trae/
+
+# Project suggestions directory
+Project_Suggestions/
