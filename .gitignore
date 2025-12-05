@@ -48,11 +48,10 @@ build/
 
 # Remove dist directory from ignore list to allow uploading release files
 # Note: Uncomment the following line if you want to ignore the entire dist directory
-# dist/
+dist/
 
 # You can still ignore specific files within dist if needed
 # e.g., dist/*.log
-dist/ESP_HI_Control.exe
 
 # Environment variables
 .env
