@@ -43,7 +43,7 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # 可执行文件配置
-exe = EXE(
+exec = EXE(
     pyz,
     a.scripts,
     a.binaries,
@@ -63,4 +63,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='图标.ico'
 )
