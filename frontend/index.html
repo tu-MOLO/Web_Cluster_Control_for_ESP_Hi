@@ -62,6 +62,11 @@
                         <span>设备管理</span>
                         <span class="badge" id="devices-badge">0</span>
                     </button>
+                    <button class="nav-item" data-page="device-library">
+                        <span class="nav-icon">📚</span>
+                        <span>设备库</span>
+                        <span class="badge" id="device-library-badge">0</span>
+                    </button>
                     <button class="nav-item" data-page="control">
                         <span class="nav-icon">🎮</span>
                         <span>移动控制</span>
@@ -164,6 +169,38 @@
                                     style="margin-top: 10px; font-size: 0.85rem; color: var(--text-secondary);">
                                     提示：点击左侧列表中的设备进行选择，然后点击"连接选中设备"。只有连接成功的设备才能进行控制。
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 设备库页面 -->
+                <div class="page" id="device-library-page">
+                    <div class="page-header">
+                        <h2>设备库</h2>
+                        <p class="page-description">管理所有已记录的 ESP-HI 设备</p>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>设备列表</h3>
+                            <button class="btn btn-danger" id="batch-delete-btn" disabled>
+                                <span class="btn-icon">🗑️</span>
+                                <span>批量删除</span>
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="devices-layout" style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+                                <!-- 所有设备 -->
+                                <div class="devices-column">
+                                    <div class="devices-list" id="device-library-list">
+                                        <div class="empty-state">
+                                            <div class="empty-icon">📚</div>
+                                            <p>设备库为空</p>
+                                            <p class="empty-hint">在设备管理页面添加设备到设备库</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

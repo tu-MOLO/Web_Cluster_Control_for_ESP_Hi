@@ -113,10 +113,25 @@ class ScannerService:
                 with open(self.devices_file, 'r') as f:
                     devices = json.load(f)
                 
-                if ip in devices:
-                    devices.remove(ip)
+                # 支持新旧格式
+                new_devices = []
+                found = False
+                for device in devices:
+                    if isinstance(device, dict):
+                        if device.get('ip') != ip:
+                            new_devices.append(device)
+                        else:
+                            found = True
+                    else:
+                        # 旧格式（纯IP字符串）
+                        if device != ip:
+                            new_devices.append({'ip': device, 'name': None})
+                        else:
+                            found = True
+                
+                if found:
                     with open(self.devices_file, 'w') as f:
-                        json.dump(devices, f)
+                        json.dump(new_devices, f, indent=2)
                     return True
             return False
         except Exception as e:
@@ -129,15 +144,27 @@ class ScannerService:
             # 先加载现有设备列表
             existing_devices = self.load_devices()
             
-            # 创建现有设备的集合，用于快速查找
-            existing_ips = set(existing_devices)
+            # 创建现有设备IP的集合，用于快速查找
+            existing_ips = {d['ip'] if isinstance(d, dict) else d for d in existing_devices}
+            
+            # 标准化现有设备为对象格式
+            normalized_existing = []
+            for device in existing_devices:
+                if isinstance(device, dict):
+                    normalized_existing.append(device)
+                else:
+                    normalized_existing.append({'ip': device, 'name': None})
             
             # 过滤出新增的设备（不在现有列表中的设备）
-            new_devices = existing_devices.copy()
+            new_devices = normalized_existing.copy()
             for device in devices:
-                if device not in existing_ips:
-                    new_devices.append(device)
-                    existing_ips.add(device)
+                device_ip = device if isinstance(device, str) else device.get('ip')
+                if device_ip not in existing_ips:
+                    if isinstance(device, str):
+                        new_devices.append({'ip': device, 'name': None})
+                    else:
+                        new_devices.append(device)
+                    existing_ips.add(device_ip)
             
             # 原子性保存：先写入临时文件，再重命名替换原文件
             temp_file = self.devices_file + ".tmp"
@@ -147,7 +174,7 @@ class ScannerService:
             # 使用os.replace实现原子性替换，确保要么完全成功要么完全失败
             os.replace(temp_file, self.devices_file)
             
-            logger.info(f"设备列表已保存到 {self.devices_file}，新增了 {len(new_devices) - len(existing_devices)} 个设备")
+            logger.info(f"设备列表已保存到 {self.devices_file}，新增了 {len(new_devices) - len(normalized_existing)} 个设备")
         except Exception as e:
             logger.error(f"保存设备列表失败: {str(e)}")
             # 清理临时文件
@@ -166,8 +193,51 @@ class ScannerService:
             with open(self.devices_file, "r") as f:
                 devices = json.load(f)
             
-            logger.info(f"从文件加载了 {len(devices)} 个设备")
-            return devices
+            # 标准化为对象格式（支持旧格式兼容）
+            normalized_devices = []
+            for device in devices:
+                if isinstance(device, dict):
+                    normalized_devices.append(device)
+                else:
+                    # 旧格式转换
+                    normalized_devices.append({'ip': device, 'name': None})
+            
+            logger.info(f"从文件加载了 {len(normalized_devices)} 个设备")
+            return normalized_devices
         except Exception as e:
             logger.error(f"加载设备列表失败: {str(e)}")
             return []
+
+    def rename_device(self, ip: str, name: str) -> bool:
+        """重命名设备"""
+        try:
+            if os.path.exists(self.devices_file):
+                with open(self.devices_file, 'r') as f:
+                    devices = json.load(f)
+                
+                # 标准化并更新设备名称
+                updated_devices = []
+                found = False
+                for device in devices:
+                    if isinstance(device, dict):
+                        if device.get('ip') == ip:
+                            device['name'] = name if name.strip() else None
+                            found = True
+                        updated_devices.append(device)
+                    else:
+                        # 旧格式转换
+                        if device == ip:
+                            updated_devices.append({'ip': device, 'name': name if name.strip() else None})
+                            found = True
+                        else:
+                            updated_devices.append({'ip': device, 'name': None})
+                
+                if found:
+                    with open(self.devices_file, 'w') as f:
+                        json.dump(updated_devices, f, indent=2)
+                    logger.info(f"设备 {ip} 已重命名为: {name}")
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"重命名设备失败: {e}")
+            return False

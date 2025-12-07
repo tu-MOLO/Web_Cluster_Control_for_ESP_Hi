@@ -2,6 +2,166 @@
 // 自动获取当前主机地址，支持 localhost, 127.0.0.1 或 局域网IP
 const API_BASE = '/api';
 
+// 事件总线类，用于组件间通信
+class EventBus {
+    constructor() {
+        this.events = new Map();
+    }
+
+    // 订阅事件
+    on(event, callback) {
+        if (!this.events.has(event)) {
+            this.events.set(event, []);
+        }
+        this.events.get(event).push(callback);
+    }
+
+    // 取消订阅
+    off(event, callback) {
+        if (this.events.has(event)) {
+            this.events.set(event, this.events.get(event).filter(cb => cb !== callback));
+        }
+    }
+
+    // 发布事件
+    emit(event, data) {
+        if (this.events.has(event)) {
+            this.events.get(event).forEach(callback => {
+                try {
+                    callback(data);
+                } catch (error) {
+                    console.error(`Error emitting event ${event}:`, error);
+                }
+            });
+        }
+    }
+
+    // 订阅一次事件
+    once(event, callback) {
+        const onceCallback = (data) => {
+            callback(data);
+            this.off(event, onceCallback);
+        };
+        this.on(event, onceCallback);
+    }
+}
+
+// 设备状态管理器类
+class DeviceStateManager {
+    constructor() {
+        this.devices = []; // 设备列表
+        this.deviceMap = new Map(); // 设备状态映射，key: ip, value: {online, connected, name}
+        this.eventBus = new EventBus();
+    }
+
+    // 获取设备列表
+    getDevices() {
+        return this.devices;
+    }
+
+    // 添加设备
+    addDevice(ip, name = '') {
+        if (!this.deviceMap.has(ip)) {
+            this.deviceMap.set(ip, {
+                online: false,
+                connected: false,
+                name: name
+            });
+            this.devices.push(ip);
+            this.devices.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            this.eventBus.emit('device:added', ip);
+        }
+    }
+
+    // 删除设备
+    removeDevice(ip) {
+        if (this.deviceMap.has(ip)) {
+            this.deviceMap.delete(ip);
+            this.devices = this.devices.filter(d => d !== ip);
+            this.eventBus.emit('device:removed', ip);
+        }
+    }
+
+    // 设置设备在线状态
+    setDeviceOnline(ip, online) {
+        const device = this.deviceMap.get(ip);
+        if (device && device.online !== online) {
+            device.online = online;
+            this.eventBus.emit('device:statusChanged', {
+                ip: ip,
+                type: 'online',
+                value: online
+            });
+        }
+    }
+
+    // 设置设备连接状态
+    setDeviceConnected(ip, connected) {
+        const device = this.deviceMap.get(ip);
+        if (device && device.connected !== connected) {
+            device.connected = connected;
+            this.eventBus.emit('device:statusChanged', {
+                ip: ip,
+                type: 'connected',
+                value: connected
+            });
+        }
+    }
+
+    // 设置设备名称
+    setDeviceName(ip, name) {
+        const device = this.deviceMap.get(ip);
+        if (device && device.name !== name) {
+            device.name = name;
+            this.eventBus.emit('device:statusChanged', {
+                ip: ip,
+                type: 'name',
+                value: name
+            });
+        }
+    }
+
+    // 获取设备状态
+    getDeviceStatus(ip) {
+        return this.deviceMap.get(ip) || { online: false, connected: false, name: '' };
+    }
+
+    // 获取在线设备列表
+    getOnlineDevices() {
+        return this.devices.filter(ip => this.deviceMap.get(ip).online);
+    }
+
+    // 获取已连接设备列表
+    getConnectedDevices() {
+        return this.devices.filter(ip => this.deviceMap.get(ip).connected);
+    }
+
+    // 获取所有设备列表
+    getAllDevices() {
+        return [...this.deviceMap.keys()];
+    }
+
+    // 批量更新设备状态
+    updateDeviceStates(states) {
+        states.forEach(state => {
+            this.addDevice(state.ip, state.name);
+            if (state.online !== undefined) {
+                this.setDeviceOnline(state.ip, state.online);
+            }
+            if (state.connected !== undefined) {
+                this.setDeviceConnected(state.ip, state.connected);
+            }
+        });
+    }
+
+    // 清空所有设备
+    clearDevices() {
+        this.devices = [];
+        this.deviceMap.clear();
+        this.eventBus.emit('device:cleared');
+    }
+}
+
 // 动作定义
 const ACTIONS = {
     '1': { name: '趴下', icon: '💤' },
@@ -28,18 +188,22 @@ const SERVOS = [
 
 class App {
     constructor() {
-        this.socket = null;
-        this.devices = [];
-        this.selectedDevices = new Set();
+        // 设备状态管理器
+        this.deviceState = new DeviceStateManager();
+        
+        // 初始化设备集合
         this.connectedDevices = new Set();
-        this.sequence = [];
-        this.joystickActive = false;
-
-        // Device Management
         this.allDevices = new Set();
         this.onlineDevices = new Set();
+        this.deviceNames = new Map();
+        
+        // 其他状态
+        this.socket = null;
+        this.selectedDevices = new Set();
+        this.sequence = [];
+        this.joystickActive = false;
         this.showAllDevices = false;
-
+        
         // 页面设备选择状态
         this.pageDeviceSelections = {
             'control': new Set(),
@@ -47,23 +211,43 @@ class App {
             'sequence': new Set(),
             'calibration': new Set()
         };
-
+        
         // 循环执行相关属性
         this.isLoopRunning = false;
         this.loopInterval = null;
         this.selectedActionId = null;
-
+        
         // 序列循环相关属性
         this.sequenceLoopInterval = null;
         this.isSequenceLoopRunning = false;
-
+        
         this.init();
+    }
+
+    // 获取设备显示名称（优先使用自定义名称，否则生成默认名称）
+    getDeviceDisplayName(ip) {
+        // 从设备状态管理器获取设备名称
+        const deviceStatus = this.deviceState.getDeviceStatus(ip);
+        if (deviceStatus.name) {
+            return deviceStatus.name;
+        }
+        
+        // 生成默认名称：设备+IP地址的最后三位数字
+        const ipParts = ip.split('.');
+        if (ipParts.length === 4) {
+            const lastOctet = ipParts[3];
+            return `设备${lastOctet}`;
+        }
+        
+        // 如果IP格式不正确，使用原始IP
+        return ip;
     }
 
     init() {
         this.initSocket();
         this.initNavigation();
         this.initDeviceManager();
+        this.initDeviceLibrary();
         this.initPageDeviceSelectors();
         this.initJoystick();
         this.initActions();
@@ -138,7 +322,7 @@ class App {
 
             // Check for lost connections (connected devices that are no longer online)
             const lostConnections = [];
-            this.connectedDevices.forEach(ip => {
+            this.deviceState.getConnectedDevices().forEach(ip => {
                 if (!currentOnline.has(ip)) {
                     lostConnections.push(ip);
                 }
@@ -147,7 +331,7 @@ class App {
             // Process lost connections
             if (lostConnections.length > 0) {
                 lostConnections.forEach(ip => {
-                    this.connectedDevices.delete(ip);
+                    this.deviceState.setDeviceConnected(ip, false);
                     this.selectedDevices.delete(ip);
                     // Notify backend to clean up connection state
                     fetch(`${API_BASE}/devices/disconnect`, {
@@ -155,6 +339,8 @@ class App {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ ip })
                     }).catch(e => console.error(`Auto-disconnect failed for ${ip}:`, e));
+                    // 增量更新设备项
+                    this.updateDeviceItem(ip);
                 });
 
                 this.showNotification(`${lostConnections.length} 个设备已断开连接（离线）`, 'warning');
@@ -164,14 +350,23 @@ class App {
                 this.syncPageSelections(); // Sync dropdowns after auto-disconnect
             }
 
-            // Update online devices
-            this.onlineDevices = currentOnline;
-            // Add to all devices
-            data.devices.forEach(ip => this.allDevices.add(ip));
+            // Update online devices and add to all devices
+            data.devices.forEach(ip => {
+                this.deviceState.addDevice(ip);
+                this.deviceState.setDeviceOnline(ip, true);
+            });
 
-            this.devices = Array.from(this.allDevices); // Keep compatibility if this.devices is used elsewhere
+            // 增量更新在线设备状态
+            this.deviceState.getAllDevices().forEach(ip => {
+                const isOnline = currentOnline.has(ip);
+                if (this.deviceState.getDeviceStatus(ip).online !== isOnline) {
+                    this.deviceState.setDeviceOnline(ip, isOnline);
+                    this.updateDeviceItem(ip);
+                }
+            });
 
             this.renderDevices();
+            this.renderDeviceLibrary(); // 更新设备库页面的设备列表
             this.updateStatus();
             this.updateAllPageDeviceSelectors(); // 更新所有页面的设备选择器
 
@@ -185,6 +380,41 @@ class App {
                 this.showNotification(`扫描完成，发现 ${data.count} 个设备`, 'success');
             } else {
                 this.showNotification('未发现设备', 'info');
+            }
+        });
+
+        // 监听设备状态变化事件
+        this.socket.on('device_status_changed', (data) => {
+            const { ip, status } = data;
+            
+            // 更新设备状态
+            if (status.online !== undefined) {
+                this.deviceState.setDeviceOnline(ip, status.online);
+            }
+            if (status.connected !== undefined) {
+                this.deviceState.setDeviceConnected(ip, status.connected);
+            }
+            if (status.name !== undefined) {
+                this.deviceState.setDeviceName(ip, status.name);
+            }
+            
+            // 增量更新设备项
+            this.updateDeviceItem(ip);
+            
+            // 更新相关UI
+            this.renderConnectedDevices();
+            this.updateStatus();
+            this.updateAllPageDeviceSelectors();
+            
+            // 显示状态变化通知
+            let msg = '';
+            if (status.connected) {
+                msg = `设备 ${this.getDeviceDisplayName(ip)} 已连接`;
+            } else if (!status.online) {
+                msg = `设备 ${this.getDeviceDisplayName(ip)} 离线`;
+            }
+            if (msg) {
+                this.showNotification(msg, status.connected ? 'success' : 'warning');
             }
         });
 
@@ -278,7 +508,7 @@ class App {
         dropdown.innerHTML = '';
 
         // 所有页面只显示在线设备
-        const displayDevices = Array.from(this.onlineDevices);
+        const displayDevices = this.deviceState.getOnlineDevices();
 
         // 如果没有在线设备，显示提示
         if (displayDevices.length === 0) {
@@ -292,8 +522,8 @@ class App {
             // 清空之前的选择
             this.pageDeviceSelections[pageId].clear();
             // 将所有已连接设备添加到选择中
-            this.connectedDevices.forEach(ip => {
-                if (this.onlineDevices.has(ip)) {
+            this.deviceState.getConnectedDevices().forEach(ip => {
+                if (this.deviceState.getDeviceStatus(ip).online) {
                     this.pageDeviceSelections[pageId].add(ip);
                 }
             });
@@ -302,11 +532,12 @@ class App {
         // 生成设备选项
         displayDevices.forEach(ip => {
             const item = document.createElement('div');
+            const displayName = this.getDeviceDisplayName(ip);
 
             // 校准页面使用单选逻辑，其他页面使用多选逻辑
             if (pageId === 'calibration') {
                 item.className = `device-dropdown-item ${this.pageDeviceSelections[pageId].has(ip) ? 'selected' : ''}`;
-                item.innerHTML = `<label>${ip}</label>`;
+                item.innerHTML = `<label>${displayName} <span style="color: var(--text-secondary); font-size: 0.8em;">${ip}</span></label>`;
 
                 // 添加点击事件（单选）
                 item.addEventListener('click', () => {
@@ -327,12 +558,12 @@ class App {
                 });
             } else {
                 // 非校准页面：复选框状态基于是否已连接
-                const isConnected = this.connectedDevices.has(ip);
+                const isConnected = this.deviceState.getDeviceStatus(ip).connected;
                 const isSelected = this.pageDeviceSelections[pageId].has(ip);
                 item.className = `device-dropdown-item ${isSelected ? 'selected' : ''}`;
                 item.innerHTML = `
                     <input type="checkbox" id="${pageId}-device-${ip}" ${isSelected ? 'checked' : ''}>
-                    <label for="${pageId}-device-${ip}">${ip}</label>
+                    <label for="${pageId}-device-${ip}">${displayName} <span style="color: var(--text-secondary); font-size: 0.8em;">${ip}</span></label>
                 `;
 
                 // 添加点击事件
@@ -387,7 +618,8 @@ class App {
         if (selectedDevices.size === 0) {
             selectedDisplay.textContent = '请选择设备';
         } else if (selectedDevices.size === 1) {
-            selectedDisplay.textContent = `${Array.from(selectedDevices)[0]}`;
+            const ip = Array.from(selectedDevices)[0];
+            selectedDisplay.textContent = this.getDeviceDisplayName(ip);
         } else {
             selectedDisplay.textContent = `${selectedDevices.size} 台设备`;
         }
@@ -427,14 +659,21 @@ class App {
             const data = await response.json();
 
             if (data.success) {
-                // 如果不是校准页面，则同步更新主设备管理界面的连接状态
-                if (pageId !== 'calibration') {
-                    this.connectedDevices = new Set(data.success_devices);
-                    this.selectedDevices = new Set(data.success_devices); // 同步选中状态
-                    this.renderConnectedDevices();
-                    this.renderDevices(); // 刷新设备列表以显示选中状态
-                    this.updateStatus();
-                }
+                // 更新设备连接状态
+                // 先将所有设备的连接状态设置为false
+                this.deviceState.getAllDevices().forEach(ip => {
+                    this.deviceState.setDeviceConnected(ip, false);
+                });
+                // 然后将成功连接的设备设置为true
+                data.success_devices.forEach(ip => {
+                    this.deviceState.setDeviceConnected(ip, true);
+                });
+                // 同步更新主设备管理界面的连接状态
+            this.selectedDevices = new Set(data.success_devices); // 同步选中状态
+            this.connectedDevices = new Set(data.success_devices); // 更新已连接设备集合
+            this.renderConnectedDevices();
+            this.renderDevices(); // 刷新设备列表以显示选中状态
+            this.updateStatus();
 
                 // 始终更新校准下拉框（因为可能有新设备连接）
                 this.updateCalibrationSelect();
@@ -494,8 +733,18 @@ class App {
             const data = await response.json();
 
             if (data.success) {
-                // 更新已连接设备列表
+                // 更新设备连接状态
+                // 先将所有设备的连接状态设置为false
+                this.deviceState.getAllDevices().forEach(ip => {
+                    this.deviceState.setDeviceConnected(ip, false);
+                });
+                // 然后将成功连接的设备设置为true
+                data.success_devices.forEach(ip => {
+                    this.deviceState.setDeviceConnected(ip, true);
+                });
+                // 更新已连接设备集合
                 this.connectedDevices = new Set(data.success_devices);
+                // 更新连接状态显示
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect();
@@ -567,6 +816,17 @@ class App {
         }
     }
 
+    // ==================== 设备库管理 ====================
+    initDeviceLibrary() {
+        // 设备库页面不提供设备连接服务功能，但提供批量删除功能
+        this.librarySelectedDevices = new Set();
+
+        const batchDeleteBtn = document.getElementById('batch-delete-btn');
+        if (batchDeleteBtn) {
+            batchDeleteBtn.addEventListener('click', () => this.batchDeleteDevices());
+        }
+    }
+
     async startScan() {
         const scanBtn = document.getElementById('scan-btn');
         const statusDiv = document.getElementById('scan-status');
@@ -590,19 +850,30 @@ class App {
             const response = await fetch(`${API_BASE}/devices`);
             const data = await response.json();
             if (data.success) {
-                this.devices = data.devices;
-                this.allDevices = new Set(data.devices);
+                // 处理设备对象格式 {ip, name}
+                const deviceObjects = data.devices;
+                
+                // 清空设备状态管理器
+                this.deviceState.clearDevices();
+                
+                // 批量添加设备到状态管理器
+                deviceObjects.forEach(device => {
+                    this.deviceState.addDevice(device.ip, device.name);
+                });
 
                 // 恢复已连接设备状态
                 if (data.connected_devices && data.connected_devices.length > 0) {
-                    this.connectedDevices = new Set(data.connected_devices);
-                    // Assume connected devices are online
-                    data.connected_devices.forEach(ip => this.onlineDevices.add(ip));
+                    // 设置已连接设备状态
+                    data.connected_devices.forEach(ip => {
+                        this.deviceState.setDeviceConnected(ip, true);
+                        this.deviceState.setDeviceOnline(ip, true);
+                    });
                     // 同时将这些设备标记为选中，方便用户操作
                     this.selectedDevices = new Set(data.connected_devices);
                 }
 
                 this.renderDevices();
+                this.renderDeviceLibrary();
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 确保校准下拉框有值
@@ -659,19 +930,22 @@ class App {
         // Filter devices
         let devicesToShow = [];
         if (this.showAllDevices) {
-            devicesToShow = Array.from(this.allDevices);
+            devicesToShow = this.deviceState.getAllDevices();
         } else {
-            devicesToShow = Array.from(this.onlineDevices);
+            devicesToShow = this.deviceState.getOnlineDevices();
         }
 
         // Sort devices: Connected > Online > Offline, then by IP
         devicesToShow.sort((a, b) => {
-            const aConnected = this.connectedDevices.has(a) ? 1 : 0;
-            const bConnected = this.connectedDevices.has(b) ? 1 : 0;
+            const aStatus = this.deviceState.getDeviceStatus(a);
+            const bStatus = this.deviceState.getDeviceStatus(b);
+            
+            const aConnected = aStatus.connected ? 1 : 0;
+            const bConnected = bStatus.connected ? 1 : 0;
             if (aConnected !== bConnected) return bConnected - aConnected;
 
-            const aOnline = this.onlineDevices.has(a) ? 1 : 0;
-            const bOnline = this.onlineDevices.has(b) ? 1 : 0;
+            const aOnline = aStatus.online ? 1 : 0;
+            const bOnline = bStatus.online ? 1 : 0;
             if (aOnline !== bOnline) return bOnline - aOnline;
 
             return a.localeCompare(b, undefined, { numeric: true });
@@ -693,21 +967,37 @@ class App {
 
         list.innerHTML = '';
         devicesToShow.forEach(ip => {
-            const isOnline = this.onlineDevices.has(ip);
+            const deviceStatus = this.deviceState.getDeviceStatus(ip);
             const isSelected = this.selectedDevices.has(ip);
 
             const item = document.createElement('div');
             let classes = ['device-item'];
+            
+            // 应用颜色编码：已连接 > 在线 > 离线
+            if (deviceStatus.connected) {
+                classes.push('connected');
+            } else if (deviceStatus.online) {
+                classes.push('online');
+            } else {
+                classes.push('offline');
+            }
+            
             if (isSelected) classes.push('selected');
-            if (isOnline) classes.push('online');
-            else classes.push('offline');
 
             item.className = classes.join(' ');
+
+            const displayName = this.getDeviceDisplayName(ip);
+            
+            // 为设备项添加data-ip属性，方便后续增量更新
+            item.dataset.ip = ip;
 
             item.innerHTML = `
                 <div class="device-info">
                     <div class="device-icon">🤖</div>
-                    <div class="device-ip">${ip}</div>
+                    <div class="device-name-container">
+                        <div class="device-ip">${displayName}</div>
+                        <div class="device-ip-secondary">${ip}</div>
+                    </div>
                 </div>
                 <button class="device-delete-btn" title="删除设备">×</button>
             `;
@@ -739,6 +1029,257 @@ class App {
 
         connectBtn.disabled = this.selectedDevices.size === 0;
     }
+    
+    // 更新单个设备项的状态（增量更新）
+    updateDeviceItem(ip) {
+        // 查找设备管理页面的设备项
+        const list = document.getElementById('devices-list');
+        const item = list.querySelector(`[data-ip="${ip}"]`);
+        if (item) {
+            this._updateDeviceItemElement(item, ip);
+        }
+        
+        // 查找设备库页面的设备项
+        const libraryList = document.getElementById('device-library-list');
+        const libraryItem = libraryList.querySelector(`[data-ip="${ip}"]`);
+        if (libraryItem) {
+            this._updateDeviceItemElement(libraryItem, ip);
+        }
+    }
+    
+    // 更新单个设备项元素
+    _updateDeviceItemElement(item, ip) {
+        const deviceStatus = this.deviceState.getDeviceStatus(ip);
+        const isSelected = this.selectedDevices.has(ip) || (this.librarySelectedDevices && this.librarySelectedDevices.has(ip));
+        
+        // 更新设备项的类名
+        let classes = ['device-item'];
+        if (deviceStatus.connected) {
+            classes.push('connected');
+        } else if (deviceStatus.online) {
+            classes.push('online');
+        } else {
+            classes.push('offline');
+        }
+        if (isSelected) classes.push('selected');
+        
+        item.className = classes.join(' ');
+        
+        // 更新设备显示名称
+        const displayName = this.getDeviceDisplayName(ip);
+        const nameElement = item.querySelector('.device-ip');
+        if (nameElement) {
+            nameElement.textContent = displayName;
+        }
+    }
+
+    // 渲染设备库页面的设备列表
+    renderDeviceLibrary() {
+        const list = document.getElementById('device-library-list');
+        const badge = document.getElementById('device-library-badge');
+        const batchDeleteBtn = document.getElementById('batch-delete-btn');
+
+        // 显示所有设备
+        let devicesToShow = this.deviceState.getAllDevices();
+
+        // Sort devices: Connected > Online > Offline, then by IP
+        devicesToShow.sort((a, b) => {
+            const aStatus = this.deviceState.getDeviceStatus(a);
+            const bStatus = this.deviceState.getDeviceStatus(b);
+            
+            const aConnected = aStatus.connected ? 1 : 0;
+            const bConnected = bStatus.connected ? 1 : 0;
+            if (aConnected !== bConnected) return bConnected - aConnected;
+
+            const aOnline = aStatus.online ? 1 : 0;
+            const bOnline = bStatus.online ? 1 : 0;
+            if (aOnline !== bOnline) return bOnline - aOnline;
+
+            return a.localeCompare(b, undefined, { numeric: true });
+        });
+
+        // 更新徽章数量
+        if (badge) {
+            badge.textContent = devicesToShow.length;
+        }
+
+        if (devicesToShow.length === 0) {
+            list.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📚</div>
+                    <p>设备库为空</p>
+                    <p class="empty-hint">在设备管理页面添加设备到设备库</p>
+                </div>
+            `;
+            if (batchDeleteBtn) batchDeleteBtn.disabled = true;
+            return;
+        }
+
+        list.innerHTML = '';
+        devicesToShow.forEach(ip => {
+            const deviceStatus = this.deviceState.getDeviceStatus(ip);
+            const isSelected = this.librarySelectedDevices && this.librarySelectedDevices.has(ip);
+
+            const item = document.createElement('div');
+            let classes = ['device-item'];
+
+            // 应用颜色编码：已连接 > 在线 > 离线
+            if (deviceStatus.connected) {
+                classes.push('connected');
+            } else if (deviceStatus.online) {
+                classes.push('online');
+            } else {
+                classes.push('offline');
+            }
+
+            if (isSelected) {
+                classes.push('selected');
+            }
+
+            item.className = classes.join(' ');
+            
+            // 为设备项添加data-ip属性，方便后续增量更新
+            item.dataset.ip = ip;
+
+            const displayName = this.getDeviceDisplayName(ip);
+
+            item.innerHTML = `
+                <input type="checkbox" class="device-checkbox" ${isSelected ? 'checked' : ''}>
+                <div class="device-info">
+                    <div class="device-icon">🤖</div>
+                    <div class="device-name-container">
+                        <div class="device-ip">${displayName}</div>
+                        <div class="device-ip-secondary">${ip}</div>
+                    </div>
+                </div>
+                <button class="device-rename-btn" title="重命名设备">✏️</button>
+                <button class="device-delete-btn" title="删除设备">×</button>
+            `;
+
+            // 复选框点击事件
+            const checkbox = item.querySelector('.device-checkbox');
+            checkbox.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (checkbox.checked) {
+                    this.librarySelectedDevices.add(ip);
+                    item.classList.add('selected');
+                } else {
+                    this.librarySelectedDevices.delete(ip);
+                    item.classList.remove('selected');
+                }
+                this.updateBatchDeleteButton();
+            });
+
+            // 点击设备项切换选中状态
+            item.addEventListener('click', (e) => {
+                if (e.target.classList.contains('device-delete-btn')) return;
+                if (e.target.classList.contains('device-checkbox')) return;
+
+                checkbox.checked = !checkbox.checked;
+                if (checkbox.checked) {
+                    this.librarySelectedDevices.add(ip);
+                    item.classList.add('selected');
+                } else {
+                    this.librarySelectedDevices.delete(ip);
+                    item.classList.remove('selected');
+                }
+                this.updateBatchDeleteButton();
+            });
+
+            // 重命名按钮事件
+            item.querySelector('.device-rename-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showRenameDialog(ip);
+            });
+
+            // 删除按钮事件
+            item.querySelector('.device-delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const displayName = this.getDeviceDisplayName(ip);
+                if (confirm(`确定要删除设备 ${displayName} 吗？`)) {
+                    this.deleteDevice(ip);
+                }
+            });
+
+            list.appendChild(item);
+        });
+
+        this.updateBatchDeleteButton();
+    }
+
+    updateBatchDeleteButton() {
+        const batchDeleteBtn = document.getElementById('batch-delete-btn');
+        if (batchDeleteBtn) {
+            batchDeleteBtn.disabled = !this.librarySelectedDevices || this.librarySelectedDevices.size === 0;
+            if (this.librarySelectedDevices && this.librarySelectedDevices.size > 0) {
+                batchDeleteBtn.innerHTML = `
+                    <span class="btn-icon">🗑️</span>
+                    <span>批量删除 (${this.librarySelectedDevices.size})</span>
+                `;
+            } else {
+                batchDeleteBtn.innerHTML = `
+                    <span class="btn-icon">🗑️</span>
+                    <span>批量删除</span>
+                `;
+            }
+        }
+    }
+
+    async batchDeleteDevices() {
+        if (!this.librarySelectedDevices || this.librarySelectedDevices.size === 0) return;
+
+        const devicesToDelete = Array.from(this.librarySelectedDevices);
+        const count = devicesToDelete.length;
+
+        if (!confirm(`确定要删除选中的 ${count} 个设备吗？`)) return;
+
+        const batchDeleteBtn = document.getElementById('batch-delete-btn');
+        const originalText = batchDeleteBtn.innerHTML;
+        batchDeleteBtn.disabled = true;
+        batchDeleteBtn.innerHTML = '<span class="btn-icon">⏳</span><span>删除中...</span>';
+
+        let successCount = 0;
+        let failedDevices = [];
+
+        for (const ip of devicesToDelete) {
+            try {
+                const response = await fetch(`${API_BASE}/devices/delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    // 使用deviceState的方法删除设备
+                    this.deviceState.removeDevice(ip);
+                    this.selectedDevices.delete(ip);
+                    this.librarySelectedDevices.delete(ip);
+                    successCount++;
+                } else {
+                    failedDevices.push(ip);
+                }
+            } catch (error) {
+                failedDevices.push(ip);
+            }
+        }
+
+        // 更新UI
+        this.renderDevices();
+        this.renderDeviceLibrary();
+        this.renderConnectedDevices();
+        this.updateStatus();
+
+        // 显示结果通知
+        if (successCount > 0) {
+            this.showNotification(`成功删除 ${successCount} 个设备`, 'success');
+        }
+        if (failedDevices.length > 0) {
+            this.showNotification(`${failedDevices.length} 个设备删除失败: ${failedDevices.join(', ')}`, 'error');
+        }
+
+        batchDeleteBtn.innerHTML = originalText;
+    }
 
     async deleteDevice(ip) {
         try {
@@ -750,12 +1291,11 @@ class App {
             const data = await response.json();
 
             if (data.success) {
-                this.devices = this.devices.filter(d => d !== ip);
-                this.allDevices.delete(ip);
-                this.onlineDevices.delete(ip);
+                // 使用deviceState的方法删除设备
+                this.deviceState.removeDevice(ip);
                 this.selectedDevices.delete(ip);
-                this.connectedDevices.delete(ip);
                 this.renderDevices();
+                this.renderDeviceLibrary();
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.showNotification(`设备 ${ip} 已删除`, 'success');
@@ -764,6 +1304,42 @@ class App {
             }
         } catch (error) {
             this.showNotification(`删除失败: ${error.message}`, 'error');
+        }
+    }
+
+    showRenameDialog(ip) {
+        const currentName = this.deviceState.getDeviceStatus(ip).name || '';
+        const newName = prompt(`请输入设备的新名称：\n\n设备IP: ${ip}\n当前名称: ${currentName || '(未设置)'}\n\n留空以清除自定义名称`, currentName);
+
+        if (newName !== null) {  // 用户点击了确定（包括空字符串）
+            this.renameDevice(ip, newName.trim());
+        }
+    }
+
+    async renameDevice(ip, name) {
+        try {
+            const response = await fetch(`${API_BASE}/devices/rename`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, name })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                // 更新设备名称
+                this.deviceState.setDeviceName(ip, name);
+
+                // 重新渲染所有设备列表
+                this.renderDevices();
+                this.renderDeviceLibrary();
+                this.renderConnectedDevices();
+
+                this.showNotification(data.message, 'success');
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (error) {
+            this.showNotification(`重命名失败: ${error.message}`, 'error');
         }
     }
 
@@ -785,6 +1361,15 @@ class App {
             const data = await response.json();
 
             if (data.success) {
+                // 更新设备连接状态
+                // 先将所有设备的连接状态设置为false
+                this.deviceState.getAllDevices().forEach(ip => {
+                    this.deviceState.setDeviceConnected(ip, false);
+                });
+                // 然后将成功连接的设备设置为true
+                data.success_devices.forEach(ip => {
+                    this.deviceState.setDeviceConnected(ip, true);
+                });
                 // 更新已连接设备列表
                 this.connectedDevices = new Set(data.success_devices);
                 this.renderConnectedDevices();
@@ -815,43 +1400,67 @@ class App {
     }
 
     renderConnectedDevices() {
-        const list = document.getElementById('connected-devices-list');
-        const badge = document.getElementById('connected-badge');
-        const connectedArray = Array.from(this.connectedDevices);
+        const lists = [
+            document.getElementById('connected-devices-list'),
+            document.getElementById('library-connected-devices-list')
+        ];
+        const badges = [
+            document.getElementById('connected-badge'),
+            document.getElementById('library-connected-badge')
+        ];
+        const connectedArray = this.deviceState.getConnectedDevices();
 
-        badge.textContent = connectedArray.length;
+        // 更新所有已连接设备列表的徽章数量
+        badges.forEach(badge => {
+            if (badge) {
+                badge.textContent = connectedArray.length;
+            }
+        });
 
-        if (connectedArray.length === 0) {
-            list.innerHTML = `
-                <div class="empty-state">
-                    <p class="empty-hint">暂无已连接设备</p>
-                </div>
-            `;
-            return;
-        }
+        // 渲染所有已连接设备列表
+        lists.forEach(list => {
+            if (!list) return;
 
-        list.innerHTML = '';
-        connectedArray.forEach(ip => {
-            const item = document.createElement('div');
-            item.className = 'device-item';
-            item.innerHTML = `
+            if (connectedArray.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <p class="empty-hint">暂无已连接设备</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = '';
+            connectedArray.forEach(ip => {
+                const item = document.createElement('div');
+                item.className = 'device-item';
+
+                const displayName = this.getDeviceDisplayName(ip);
+                const deviceStatus = this.deviceState.getDeviceStatus(ip);
+                const hasCustomName = !!deviceStatus.name;
+
+                item.innerHTML = `
                 <div class="device-info">
                     <div class="device-icon">🔗</div>
-                    <div class="device-ip">${ip}</div>
+                    <div class="device-name-container">
+                        <div class="device-ip">${displayName}</div>
+                        <div class="device-ip-secondary">${ip}</div>
+                    </div>
                 </div>
                 <button class="device-delete-btn" title="断开连接">×</button>
             `;
 
-            // 添加断开连接按钮的点击事件
-            const deleteBtn = item.querySelector('.device-delete-btn');
-            deleteBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (confirm(`确定要断开设备 ${ip} 的连接吗？`)) {
-                    this.disconnectDevice(ip);
-                }
-            });
+                // 添加断开连接按钮的点击事件
+                const deleteBtn = item.querySelector('.device-delete-btn');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm(`确定要断开设备 ${ip} 的连接吗？`)) {
+                        this.disconnectDevice(ip);
+                    }
+                });
 
-            list.appendChild(item);
+                list.appendChild(item);
+            });
         });
     }
 
@@ -865,10 +1474,12 @@ class App {
             const data = await response.json();
 
             if (data.success) {
-                this.connectedDevices.delete(ip);
+                // 更新设备连接状态
+                this.deviceState.setDeviceConnected(ip, false);
                 this.selectedDevices.delete(ip);
                 this.renderConnectedDevices();
                 this.renderDevices(); // Update discovered devices list to reflect status change
+                this.renderDeviceLibrary(); // Update device library list to reflect status change
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 更新校准下拉框
                 this.syncPageSelections(); // Sync dropdowns with new connection state
@@ -883,13 +1494,17 @@ class App {
     }
 
     updateStatus() {
-        document.getElementById('recorded-count').textContent = `已记录 ${this.devices.length} 设备`;
-        document.getElementById('connected-count').textContent = `已连接 ${this.connectedDevices.size} 设备`;
+        // 使用deviceState管理器获取设备数量
+        const allDevicesCount = this.deviceState.getAllDevices().length;
+        const connectedDevicesCount = this.deviceState.getConnectedDevices().length;
+        
+        document.getElementById('recorded-count').textContent = `已记录 ${allDevicesCount} 设备`;
+        document.getElementById('connected-count').textContent = `已连接 ${connectedDevicesCount} 设备`;
 
         // 更新动作循环按钮状态
         const startLoopBtn = document.getElementById('start-loop-btn');
         if (startLoopBtn) {
-            startLoopBtn.disabled = this.connectedDevices.size === 0 || !this.selectedActionId || this.isLoopRunning;
+            startLoopBtn.disabled = connectedDevicesCount === 0 || !this.selectedActionId || this.isLoopRunning;
         }
 
         // 更新序列循环按钮状态
@@ -897,7 +1512,7 @@ class App {
         const stopSequenceLoopBtn = document.getElementById('stop-sequence-loop-btn');
 
         if (startSequenceLoopBtn && stopSequenceLoopBtn) {
-            if (this.connectedDevices.size > 0) {
+            if (connectedDevicesCount > 0) {
                 // 启用序列循环按钮（如果有序列且不在循环中）
                 startSequenceLoopBtn.disabled = this.isSequenceLoopRunning || this.sequence.length === 0;
             } else {
@@ -1025,7 +1640,7 @@ class App {
     }
 
     async startContinuousMove(direction) {
-        if (this.connectedDevices.size === 0) {
+        if (this.deviceState.getConnectedDevices().length === 0) {
             this.showNotification('请先连接设备', 'warning');
             return;
         }
@@ -1056,7 +1671,7 @@ class App {
     }
 
     async executeMove(direction) {
-        if (this.connectedDevices.size === 0) {
+        if (this.deviceState.getConnectedDevices().length === 0) {
             this.showNotification('请先连接设备', 'warning');
             return;
         }
@@ -1196,7 +1811,7 @@ class App {
         const selectBtn = document.getElementById('loop-action-select');
         const delayInput = document.getElementById('loop-delay');
 
-        startBtn.disabled = this.connectedDevices.size === 0;
+        startBtn.disabled = this.deviceState.getConnectedDevices().length === 0;
         stopBtn.disabled = true;
         selectBtn.disabled = false;
         delayInput.disabled = false;
@@ -1206,7 +1821,7 @@ class App {
     }
 
     async executeAction(actionId) {
-        if (this.connectedDevices.size === 0) {
+        if (this.deviceState.getConnectedDevices().length === 0) {
             this.showNotification('请先连接设备', 'warning');
             return;
         }
@@ -1524,7 +2139,7 @@ class App {
     async executeSequence() {
         const executeBtn = document.getElementById('execute-sequence-btn');
 
-        if (this.connectedDevices.size === 0) {
+        if (this.deviceState.getConnectedDevices().length === 0) {
             this.showNotification('请先连接设备', 'warning');
             return;
         }

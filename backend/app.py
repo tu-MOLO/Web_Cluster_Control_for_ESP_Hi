@@ -133,11 +133,30 @@ def select_devices():
             }), 400
         
         # 初始化设备管理器
-        # device_manager.initialize_devices 返回 {'active_devices': [...], 'failed_devices': [...]}
+        # device_manager.initialize_devices 返回 {'active_devices': [...], 'failed_devices': [...]} 
         results = device_manager.initialize_devices(device_ips)
         
         success_ips = results.get('active_devices', [])
         failed_ips = results.get('failed_devices', [])
+        
+        # 推送设备连接状态变化
+        for ip in success_ips:
+            socketio.emit('device_status_changed', {
+                'ip': ip,
+                'status': {
+                    'connected': True,
+                    'online': True
+                }
+            })
+        
+        for ip in failed_ips:
+            socketio.emit('device_status_changed', {
+                'ip': ip,
+                'status': {
+                    'connected': False,
+                    'online': False
+                }
+            })
         
         return jsonify({
             'success': True,
@@ -169,6 +188,16 @@ def disconnect_device():
         if ip in device_manager.controllers:
             del device_manager.controllers[ip]
             logger.info(f"已断开设备连接: {ip}")
+            
+            # 推送设备断开连接状态变化
+            socketio.emit('device_status_changed', {
+                'ip': ip,
+                'status': {
+                    'connected': False,
+                    'online': True
+                }
+            })
+            
             return jsonify({
                 'success': True,
                 'message': f'已断开设备 {ip} 的连接'
@@ -180,6 +209,48 @@ def disconnect_device():
             }), 400
     except Exception as e:
         logger.error(f"断开设备失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/devices/rename', methods=['POST'])
+def rename_device():
+    """重命名设备"""
+    try:
+        data = request.get_json()
+        ip = data.get('ip')
+        name = data.get('name')
+        
+        if not ip:
+            return jsonify({
+                'success': False,
+                'error': '请指定要重命名的设备'
+            }), 400
+        
+        # 调用scanner_service的rename_device方法
+        success = scanner_service.rename_device(ip, name)
+        
+        if success:
+            # 推送设备名称变化
+            socketio.emit('device_status_changed', {
+                'ip': ip,
+                'status': {
+                    'name': name
+                }
+            })
+            
+            return jsonify({
+                'success': True,
+                'message': f'设备 {ip} 已重命名为 {name}' if name else f'设备 {ip} 已清除自定义名称'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '设备不存在或重命名失败'
+            }), 400
+    except Exception as e:
+        logger.error(f"重命名设备失败: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)

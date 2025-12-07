@@ -452,12 +452,36 @@ body {
     border-radius: 12px;
     padding: 12px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.3s ease-in-out;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
     position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 设备状态变化动画 */
+.device-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.5s ease;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* 状态变化时的闪光效果 */
+.device-item.connected::before,
+.device-item.online::before,
+.device-item.offline::before {
+    left: 100%;
 }
 
 .device-item:hover {
@@ -543,6 +567,114 @@ body[data-theme="pastel"] .orb-2 {
 #connected-devices-list .device-item:hover .device-delete-btn {
     opacity: 1;
 }
+
+/* 设备库页面设备状态颜色编码 */
+/* 已连接设备 - 紫色 */
+#device-library-list .device-item.connected {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.25);
+}
+
+/* 在线设备 - 绿色 */
+#device-library-list .device-item.online {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.2);
+}
+
+/* 离线设备 - 灰色 */
+#device-library-list .device-item.offline {
+    background: rgba(100, 116, 139, 0.1);
+    border-color: rgba(100, 116, 139, 0.3);
+    opacity: 0.7;
+}
+
+/* 设备管理页面 - 设备列表样式 */
+/* 已连接设备 - 紫色 */
+#devices-list .device-item.connected {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.25);
+}
+
+/* 在线设备 - 绿色 */
+#devices-list .device-item.online {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.2);
+}
+
+/* 离线设备 - 灰色 */
+#devices-list .device-item.offline {
+    background: rgba(100, 116, 139, 0.1);
+    border-color: rgba(100, 116, 139, 0.3);
+    opacity: 0.7;
+}
+
+/* 设备库页面选中状态 */
+#device-library-list .device-item.selected {
+    border-width: 2px;
+    transform: scale(1.02);
+}
+
+/* 设备库页面的复选框样式 */
+#device-library-list .device-checkbox {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+    z-index: 5;
+}
+
+/* 设备名称容器 */
+.device-name-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* 次要IP显示（当有自定义名称时） */
+.device-ip-secondary {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* 重命名按钮样式 */
+.device-rename-btn {
+    position: absolute;
+    top: 5px;
+    right: 30px;
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--primary-color);
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.device-item:hover .device-rename-btn {
+    opacity: 1;
+}
+
+.device-rename-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: scale(1.1);
+}
+
 
 /* 设备布局相关样式 */
 .devices-layout {
