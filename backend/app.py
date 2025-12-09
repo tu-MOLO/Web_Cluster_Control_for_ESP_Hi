@@ -119,6 +119,26 @@ def delete_device():
             'error': str(e)
         }), 500
 
+@app.route('/api/devices/add', methods=['POST'])
+def add_device():
+    """添加设备"""
+    try:
+        data = request.json
+        ip = data.get('ip')
+        name = data.get('name', '')
+        
+        if not ip:
+            return jsonify({'success': False, 'error': 'IP address required'}), 400
+        
+        success = scanner_service.add_device(ip, name)
+        return jsonify({'success': success, 'message': '设备添加成功' if success else '设备已存在'})
+    except Exception as e:
+        logger.error(f"添加设备失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/devices/select', methods=['POST'])
 def select_devices():
     """选择要控制的设备"""

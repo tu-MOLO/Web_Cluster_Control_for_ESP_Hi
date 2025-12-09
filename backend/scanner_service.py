@@ -241,3 +241,29 @@ class ScannerService:
         except Exception as e:
             logger.error(f"重命名设备失败: {e}")
             return False
+    
+    def add_device(self, ip: str, name: str = '') -> bool:
+        """添加单个设备"""
+        try:
+            # 先加载现有设备
+            existing_devices = self.load_devices()
+            existing_ips = {device['ip'] for device in existing_devices}
+            
+            # 检查设备是否已存在
+            if ip in existing_ips:
+                logger.info(f"设备 {ip} 已存在，跳过添加")
+                return False
+            
+            # 添加新设备
+            new_device = {'ip': ip, 'name': name if name.strip() else None}
+            existing_devices.append(new_device)
+            
+            # 保存设备列表
+            with open(self.devices_file, 'w') as f:
+                json.dump(existing_devices, f, indent=2)
+            
+            logger.info(f"成功添加设备: {ip} (名称: {name})")
+            return True
+        except Exception as e:
+            logger.error(f"添加设备失败: {e}")
+            return False

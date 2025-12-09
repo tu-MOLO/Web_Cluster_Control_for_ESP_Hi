@@ -825,6 +825,227 @@ class App {
         if (batchDeleteBtn) {
             batchDeleteBtn.addEventListener('click', () => this.batchDeleteDevices());
         }
+        
+        // 初始化导入导出功能
+        this.initImportExport();
+    }
+    
+    // 初始化导入导出功能
+    initImportExport() {
+        const importBtn = document.getElementById('import-devices-btn');
+        const exportBtn = document.getElementById('export-devices-btn');
+        const fileInput = document.getElementById('file-input');
+        
+        // 导出按钮事件
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => this.exportDevicesToFile());
+        }
+        
+        // 导入按钮事件
+        if (importBtn && fileInput) {
+            importBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            // 文件选择事件
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    this.importDevicesFromFile(file);
+                    // 清空文件输入，允许重新选择同一个文件
+                    fileInput.value = '';
+                }
+            });
+        }
+    }
+    
+    // 验证设备数据格式
+    validateDeviceData(data) {
+        // 检查是否为数组
+        if (!Array.isArray(data)) {
+            return { valid: false, message: '设备数据必须是数组格式' };
+        }
+        
+        // 检查数组是否为空
+        if (data.length === 0) {
+            return { valid: false, message: '设备数据不能为空' };
+        }
+        
+        // 验证每个设备的格式
+        for (let i = 0; i < data.length; i++) {
+            const device = data[i];
+            
+            // 检查是否为对象
+            if (typeof device !== 'object' || device === null) {
+                return { valid: false, message: `第 ${i + 1} 个设备数据必须是对象格式` };
+            }
+            
+            // 检查是否包含ip字段
+            if (!device.ip) {
+                return { valid: false, message: `第 ${i + 1} 个设备缺少必要的ip字段` };
+            }
+            
+            // 检查ip格式是否合法
+            const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+            if (!ipRegex.test(device.ip)) {
+                return { valid: false, message: `第 ${i + 1} 个设备的ip地址格式不合法: ${device.ip}` };
+            }
+        }
+        
+        return { valid: true, message: '设备数据格式验证通过' };
+    }
+    
+    // 从文件导入设备
+    async importDevicesFromFile(file) {
+        try {
+            // 读取文件内容
+            const reader = new FileReader();
+            
+            // 创建Promise封装FileReader
+            const fileContent = await new Promise((resolve, reject) => {
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(new Error('读取文件失败'));
+                reader.readAsText(file);
+            });
+            
+            // 解析JSON
+            let deviceData;
+            try {
+                deviceData = JSON.parse(fileContent);
+            } catch (error) {
+                this.showNotification('JSON格式错误，请检查文件内容', 'error');
+                return;
+            }
+            
+            // 验证数据格式
+            const validationResult = this.validateDeviceData(deviceData);
+            if (!validationResult.valid) {
+                this.showNotification(validationResult.message, 'error');
+                return;
+            }
+            
+            // 批量添加设备
+            let successCount = 0;
+            let duplicateCount = 0;
+            
+            for (const device of deviceData) {
+                // 检查设备是否已存在
+                const existingDevice = this.deviceState.getAllDevices().find(ip => ip === device.ip);
+                
+                if (!existingDevice) {
+                    // 调用API添加设备
+                    try {
+                        const response = await fetch(`${API_BASE}/devices/add`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ip: device.ip, name: device.name || '' })
+                        });
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            // 更新设备状态管理器
+                            this.deviceState.addDevice(device.ip, device.name || '');
+                            successCount++;
+                        }
+                    } catch (error) {
+                        console.error(`添加设备 ${device.ip} 失败:`, error);
+                    }
+                } else {
+                    duplicateCount++;
+                }
+            }
+            
+            // 更新UI
+            this.renderDeviceLibrary();
+            this.updateStatus();
+            this.updateAllPageDeviceSelectors();
+            
+            // 显示导入结果
+            let message = `成功导入 ${successCount} 个设备`;
+            if (duplicateCount > 0) {
+                message += `，${duplicateCount} 个设备已存在`;
+            }
+            this.showNotification(message, 'success');
+            
+        } catch (error) {
+            this.showNotification(`导入失败: ${error.message}`, 'error');
+            console.error('导入设备失败:', error);
+        }
+    }
+    
+    // 导出设备到文件
+    async exportDevicesToFile() {
+        try {
+            // 获取所有设备数据
+            const allIps = this.deviceState.getAllDevices();
+            const devicesData = allIps.map(ip => {
+                const status = this.deviceState.getDeviceStatus(ip);
+                return {
+                    ip: ip,
+                    name: status.name || ''
+                };
+            });
+            
+            // 转换为JSON格式
+            const jsonContent = JSON.stringify(devicesData, null, 2);
+            
+            // 创建Blob对象
+            const blob = new Blob([jsonContent], { type: 'application/json' });
+            
+            // 使用文件系统访问API让用户选择保存位置
+            try {
+                // 检查浏览器是否支持showSaveFilePicker
+                if ('showSaveFilePicker' in window) {
+                    // 使用现代浏览器的文件系统访问API
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'devices.json',
+                        types: [
+                            {
+                                description: 'JSON文件',
+                                accept: {
+                                    'application/json': ['.json']
+                                }
+                            }
+                        ]
+                    });
+                    
+                    // 写入文件
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    
+                    // 显示导出成功通知
+                    this.showNotification(`成功导出 ${devicesData.length} 个设备数据`, 'success');
+                } else {
+                    //  fallback: 使用传统的下载方式
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'devices.json';
+                    
+                    // 触发下载
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // 清理
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    // 显示导出成功通知
+                    this.showNotification(`成功导出 ${devicesData.length} 个设备数据`, 'success');
+                }
+            } catch (error) {
+                // 用户取消了文件选择
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                throw error;
+            }
+            
+        } catch (error) {
+            this.showNotification(`导出失败: ${error.message}`, 'error');
+            console.error('导出设备失败:', error);
+        }
     }
 
     async startScan() {
@@ -1050,7 +1271,19 @@ class App {
     // 更新单个设备项元素
     _updateDeviceItemElement(item, ip) {
         const deviceStatus = this.deviceState.getDeviceStatus(ip);
-        const isSelected = this.selectedDevices.has(ip) || (this.librarySelectedDevices && this.librarySelectedDevices.has(ip));
+        
+        // 判断设备项是否在设备库页面（通过检查是否有复选框）
+        const isLibraryItem = item.querySelector('.device-checkbox') !== null;
+        
+        // 根据设备项所在页面使用不同的选中状态判断逻辑
+        let isSelected = false;
+        if (isLibraryItem) {
+            // 设备库页面：只使用librarySelectedDevices
+            isSelected = this.librarySelectedDevices && this.librarySelectedDevices.has(ip);
+        } else {
+            // 设备管理页面：只使用selectedDevices
+            isSelected = this.selectedDevices.has(ip);
+        }
         
         // 更新设备项的类名
         let classes = ['device-item'];
@@ -1064,6 +1297,14 @@ class App {
         if (isSelected) classes.push('selected');
         
         item.className = classes.join(' ');
+        
+        // 更新复选框状态（仅设备库页面）
+        if (isLibraryItem) {
+            const checkbox = item.querySelector('.device-checkbox');
+            if (checkbox) {
+                checkbox.checked = isSelected;
+            }
+        }
         
         // 更新设备显示名称
         const displayName = this.getDeviceDisplayName(ip);

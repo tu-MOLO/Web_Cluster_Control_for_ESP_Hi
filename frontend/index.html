@@ -182,13 +182,24 @@
                     </div>
 
                     <div class="card">
-                        <div class="card-header">
-                            <h3>设备列表</h3>
+                    <div class="card-header">
+                        <h3>设备列表</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-outline" id="export-devices-btn">
+                                <span class="btn-icon">📤</span>
+                                <span>导出设备</span>
+                            </button>
+                            <button class="btn btn-outline" id="import-devices-btn">
+                                <span class="btn-icon">📥</span>
+                                <span>从文件导入</span>
+                            </button>
                             <button class="btn btn-danger" id="batch-delete-btn" disabled>
                                 <span class="btn-icon">🗑️</span>
                                 <span>批量删除</span>
                             </button>
                         </div>
+                        <input type="file" id="file-input" accept=".json" style="display: none;">
+                    </div>
                         <div class="card-body">
                             <div class="devices-layout" style="display: grid; grid-template-columns: 1fr; gap: 20px;">
                                 <!-- 所有设备 -->

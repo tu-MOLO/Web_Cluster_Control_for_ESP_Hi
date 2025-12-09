@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+# 编译：pyinstaller esp_hi.spec
+
 block_cipher = None
 
 # 添加的数据文件和资源
