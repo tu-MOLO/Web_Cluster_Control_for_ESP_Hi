@@ -5,3 +5,4 @@ requests==2.31.0
 urllib3==2.1.0
 python-socketio==5.10.0
 eventlet==0.33.3
+pyinstaller==6.18.0

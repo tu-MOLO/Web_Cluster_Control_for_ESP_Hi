@@ -551,7 +551,7 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'active_devices': len(device_manager.controllers),
-        'version': '1.0.0'
+        'version': '1.0.1'
     })
 
 # ==================== 静态文件服务 ====================
