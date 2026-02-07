@@ -221,6 +221,16 @@ class App {
         this.sequenceLoopInterval = null;
         this.isSequenceLoopRunning = false;
         
+        // 状态更新防抖定时器
+        this.statusUpdateTimeout = null;
+        
+        // 渲染状态标记
+        this.isRendering = {
+            devices: false,
+            deviceLibrary: false,
+            connectedDevices: false
+        };
+        
         this.init();
     }
 
@@ -304,8 +314,12 @@ class App {
 
     // ==================== Socket.IO 初始化 ====================
     initSocket() {
-        // 不传参数，自动连接到当前服务器
-        this.socket = io();
+        // 配置自动重连
+        this.socket = io({
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5
+        });
 
         this.socket.on('connect', () => {
             this.updateConnectionStatus(true);
@@ -314,7 +328,15 @@ class App {
 
         this.socket.on('disconnect', () => {
             this.updateConnectionStatus(false);
-            this.showNotification('与服务器断开连接', 'error');
+            this.showNotification('与服务器断开连接，正在尝试重连...', 'warning');
+        });
+
+        this.socket.on('reconnect', () => {
+            this.showNotification('已重新连接到服务器', 'success');
+        });
+
+        this.socket.on('reconnect_failed', () => {
+            this.showNotification('重连失败，请刷新页面', 'error');
         });
 
         this.socket.on('scan_complete', (data) => {
@@ -330,17 +352,27 @@ class App {
 
             // Process lost connections
             if (lostConnections.length > 0) {
-                lostConnections.forEach(ip => {
+                const disconnectPromises = lostConnections.map(ip => {
                     this.deviceState.setDeviceConnected(ip, false);
                     this.selectedDevices.delete(ip);
-                    // Notify backend to clean up connection state
-                    fetch(`${API_BASE}/devices/disconnect`, {
+                    this.librarySelectedDevices.delete(ip);
+                    this.updateDeviceItem(ip);
+                    
+                    return fetch(`${API_BASE}/devices/disconnect`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ ip })
-                    }).catch(e => console.error(`Auto-disconnect failed for ${ip}:`, e));
-                    // 增量更新设备项
-                    this.updateDeviceItem(ip);
+                    }).catch(e => {
+                        console.error(`Auto-disconnect failed for ${ip}:`, e);
+                        return { error: true, ip };
+                    });
+                });
+
+                Promise.allSettled(disconnectPromises).then(results => {
+                    const failed = results.filter(r => r.status === 'rejected' || r.value?.error);
+                    if (failed.length > 0) {
+                        console.warn(`${failed.length} 个设备断开连接失败`);
+                    }
                 });
 
                 this.showNotification(`${lostConnections.length} 个设备已断开连接（离线）`, 'warning');
@@ -398,13 +430,35 @@ class App {
                 this.deviceState.setDeviceName(ip, status.name);
             }
             
+            // 如果设备断开连接，停止连续移动
+            if (status.connected === false || status.online === false) {
+                this.stopContinuousMove();
+                
+                // 如果校准中的设备断开连接，提示用户
+                const calibrationDevice = this.pageDeviceSelections['calibration'];
+                if (calibrationDevice && calibrationDevice.has(ip)) {
+                    this.showNotification('校准设备已断开连接', 'warning');
+                }
+            }
+            
             // 增量更新设备项
             this.updateDeviceItem(ip);
             
-            // 更新相关UI
-            this.renderConnectedDevices();
-            this.updateStatus();
-            this.updateAllPageDeviceSelectors();
+            // 防抖更新UI
+            if (this.statusUpdateTimeout) {
+                clearTimeout(this.statusUpdateTimeout);
+            }
+            this.statusUpdateTimeout = setTimeout(() => {
+                // 清除渲染状态标记，允许重新渲染
+                this.isRendering.devices = false;
+                this.isRendering.deviceLibrary = false;
+                this.isRendering.connectedDevices = false;
+                
+                this.renderConnectedDevices();
+                this.renderDeviceLibrary();
+                this.updateStatus();
+                this.updateAllPageDeviceSelectors();
+            }, 100);
             
             // 显示状态变化通知
             let msg = '';
@@ -1138,6 +1192,9 @@ class App {
     }
 
     renderDevices() {
+        if (this.isRendering.devices) return;
+        this.isRendering.devices = true;
+        
         const list = document.getElementById('devices-list');
         const badge = document.getElementById('devices-badge');
         const connectBtn = document.getElementById('connect-selected-btn');
@@ -1249,6 +1306,7 @@ class App {
         });
 
         connectBtn.disabled = this.selectedDevices.size === 0;
+        this.isRendering.devices = false;
     }
     
     // 更新单个设备项的状态（增量更新）
@@ -1316,6 +1374,9 @@ class App {
 
     // 渲染设备库页面的设备列表
     renderDeviceLibrary() {
+        if (this.isRendering.deviceLibrary) return;
+        this.isRendering.deviceLibrary = true;
+        
         const list = document.getElementById('device-library-list');
         const badge = document.getElementById('device-library-badge');
         const batchDeleteBtn = document.getElementById('batch-delete-btn');
@@ -1446,6 +1507,7 @@ class App {
         });
 
         this.updateBatchDeleteButton();
+        this.isRendering.deviceLibrary = false;
     }
 
     updateBatchDeleteButton() {
@@ -1506,6 +1568,10 @@ class App {
         }
 
         // 更新UI
+        this.isRendering.devices = false;
+        this.isRendering.deviceLibrary = false;
+        this.isRendering.connectedDevices = false;
+        
         this.renderDevices();
         this.renderDeviceLibrary();
         this.renderConnectedDevices();
@@ -1520,6 +1586,7 @@ class App {
         }
 
         batchDeleteBtn.innerHTML = originalText;
+        batchDeleteBtn.disabled = false;
     }
 
     async deleteDevice(ip) {
@@ -1535,6 +1602,12 @@ class App {
                 // 使用deviceState的方法删除设备
                 this.deviceState.removeDevice(ip);
                 this.selectedDevices.delete(ip);
+                this.librarySelectedDevices.delete(ip);
+                
+                this.isRendering.devices = false;
+                this.isRendering.deviceLibrary = false;
+                this.isRendering.connectedDevices = false;
+                
                 this.renderDevices();
                 this.renderDeviceLibrary();
                 this.renderConnectedDevices();
@@ -1569,6 +1642,11 @@ class App {
             if (data.success) {
                 // 更新设备名称
                 this.deviceState.setDeviceName(ip, name);
+
+                // 清除渲染状态标记
+                this.isRendering.devices = false;
+                this.isRendering.deviceLibrary = false;
+                this.isRendering.connectedDevices = false;
 
                 // 重新渲染所有设备列表
                 this.renderDevices();
@@ -1613,6 +1691,12 @@ class App {
                 });
                 // 更新已连接设备列表
                 this.connectedDevices = new Set(data.success_devices);
+                
+                // 清除渲染状态标记
+                this.isRendering.devices = false;
+                this.isRendering.deviceLibrary = false;
+                this.isRendering.connectedDevices = false;
+                
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 更新校准下拉框
@@ -1641,6 +1725,9 @@ class App {
     }
 
     renderConnectedDevices() {
+        if (this.isRendering.connectedDevices) return;
+        this.isRendering.connectedDevices = true;
+        
         const lists = [
             document.getElementById('connected-devices-list'),
             document.getElementById('library-connected-devices-list')
@@ -1703,6 +1790,8 @@ class App {
                 list.appendChild(item);
             });
         });
+        
+        this.isRendering.connectedDevices = false;
     }
 
     async disconnectDevice(ip) {
@@ -2064,6 +2153,10 @@ class App {
     async executeAction(actionId) {
         if (this.deviceState.getConnectedDevices().length === 0) {
             this.showNotification('请先连接设备', 'warning');
+            // 如果在循环中执行，停止循环
+            if (this.isLoopRunning) {
+                this.stopActionLoop();
+            }
             return;
         }
 
@@ -2081,6 +2174,10 @@ class App {
             }
         } catch (error) {
             this.showNotification(`执行失败: ${error.message}`, 'error');
+            // 如果在循环中执行失败，停止循环
+            if (this.isLoopRunning) {
+                this.stopActionLoop();
+            }
         }
     }
 
@@ -2382,7 +2479,7 @@ class App {
 
         if (this.deviceState.getConnectedDevices().length === 0) {
             this.showNotification('请先连接设备', 'warning');
-            return;
+            return false;
         }
 
         try {
@@ -2401,10 +2498,12 @@ class App {
                 throw new Error(data.error);
             }
             // 成功启动后，等待 WebSocket 通知完成
+            return true;
         } catch (error) {
             this.showNotification(`启动失败: ${error.message}`, 'error');
             executeBtn.disabled = false;
             executeBtn.innerHTML = '<span class="btn-icon">▶️</span><span>执行序列</span>';
+            return false;
         }
     }
 
@@ -2442,11 +2541,22 @@ class App {
         this.showNotification('开始序列循环执行', 'info');
 
         // 执行第一次序列
-        await this.executeSequence();
+        const firstResult = await this.executeSequence();
+        if (!firstResult) {
+            // 如果第一次执行失败，不启动循环
+            this.isSequenceLoopRunning = false;
+            startLoopBtn.disabled = this.sequence.length === 0;
+            stopLoopBtn.disabled = true;
+            return;
+        }
 
         // 设置循环间隔
         this.sequenceLoopInterval = setInterval(async () => {
-            await this.executeSequence();
+            const result = await this.executeSequence();
+            if (!result) {
+                // 如果执行失败，停止循环
+                this.stopSequenceLoop();
+            }
         }, delay * 1000);
     }
 
@@ -2477,6 +2587,12 @@ class App {
     // ==================== 通用功能 ====================
     showNotification(message, type = 'info') {
         const container = document.getElementById('notifications');
+        
+        // 限制通知数量，最多显示5个
+        while (container.children.length >= 5) {
+            container.removeChild(container.firstChild);
+        }
+        
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
 
