@@ -2,9 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
-![Python](https://img.shields.io/badge/python-3.6+-green.svg)
-![License](https://img.shields.io/badge/license-MIT-orange.svg)
+![Version](https://img.shields.io/badge/version-1.0.1-blue.svg) ![Python](https://img.shields.io/badge/python-3.6+-green.svg) ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
 一个功能强大的 ESP-Hi 机器狗集群管理系统，支持多设备同时连接、实时控制、动作编排和舵机校准等功能。
 
