@@ -224,6 +224,9 @@ class App {
         // 状态更新防抖定时器
         this.statusUpdateTimeout = null;
         
+        // 大图标模式状态
+        this.isLargeIconMode = false;
+        
         // 渲染状态标记
         this.isRendering = {
             devices: false,
@@ -266,6 +269,7 @@ class App {
         this.initThemeToggle();
         this.initActionLoop();
         this.initSequenceLoop();
+        this.initZoomToggle();
 
         // 初始加载设备
         this.loadDevices();
@@ -308,6 +312,45 @@ class App {
 
         this.showNotification(
             newTheme === 'pastel' ? '已切换到马卡龙主题' : '已切换到默认主题',
+            'info'
+        );
+    }
+
+    // 初始化大图标模式切换功能
+    initZoomToggle() {
+        // 从localStorage加载保存的大图标模式偏好
+        const savedZoomMode = localStorage.getItem('zoomMode') === 'true';
+        this.isLargeIconMode = savedZoomMode;
+        
+        // 应用保存的设置
+        if (this.isLargeIconMode) {
+            document.body.setAttribute('data-zoom', 'large');
+        }
+
+        // 添加大图标模式切换按钮事件监听
+        const zoomToggle = document.getElementById('zoom-toggle');
+        if (zoomToggle) {
+            zoomToggle.addEventListener('click', () => this.toggleZoom());
+        }
+    }
+
+    // 切换大图标模式
+    toggleZoom() {
+        this.isLargeIconMode = !this.isLargeIconMode;
+        
+        // 应用大图标模式设置
+        if (this.isLargeIconMode) {
+            document.body.setAttribute('data-zoom', 'large');
+        } else {
+            document.body.removeAttribute('data-zoom');
+        }
+        
+        // 保存设置到localStorage
+        localStorage.setItem('zoomMode', this.isLargeIconMode.toString());
+
+        // 显示通知
+        this.showNotification(
+            this.isLargeIconMode ? '已切换到大图标模式' : '已切换到标准模式',
             'info'
         );
     }

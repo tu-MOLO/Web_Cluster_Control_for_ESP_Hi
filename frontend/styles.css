@@ -203,6 +203,27 @@ body {
     background: rgba(255, 255, 255, 0.1);
 }
 
+.zoom-toggle-container {
+    display: flex;
+    align-items: center;
+}
+
+#zoom-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+    padding: 5px;
+    border-radius: 8px;
+}
+
+#zoom-toggle:hover {
+    transform: rotate(30deg);
+    background: rgba(255, 255, 255, 0.1);
+}
+
 .status-item {
     display: flex;
     align-items: center;
@@ -247,6 +268,8 @@ body {
     padding: 20px;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
+    max-height: calc(100vh - 100px);
 }
 
 .nav-title {
@@ -1479,6 +1502,194 @@ input[type="range"]::-webkit-slider-thumb {
 
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
+}
+
+/* 大图标模式 */
+body[data-zoom="large"] {
+    /* 增大基础字体大小 */
+    font-size: 18px;
+}
+
+/* 大图标模式下的导航图标 */
+body[data-zoom="large"] .nav-icon {
+    font-size: 2.5rem !important;
+    padding: 10px !important;
+}
+
+/* 大图标模式下的设备项 */
+body[data-zoom="large"] .device-item {
+    padding: 30px !important;
+    min-height: 180px !important;
+}
+
+body[data-zoom="large"] .device-icon {
+    font-size: 4rem !important;
+    margin-bottom: 15px !important;
+}
+
+body[data-zoom="large"] .device-ip {
+    font-size: 1.5rem !important;
+    word-break: break-all;
+    padding: 0 10px;
+}
+
+body[data-zoom="large"] .device-ip-secondary {
+    font-size: 1.2rem !important;
+    word-break: break-all;
+    padding: 0 10px;
+}
+
+body[data-zoom="large"] .device-delete-btn {
+    width: 35px !important;
+    height: 35px !important;
+    font-size: 16px !important;
+    top: 10px !important;
+    right: 10px !important;
+}
+
+/* 大图标模式下的按钮 */
+body[data-zoom="large"] .btn {
+    padding: 15px 30px !important;
+    font-size: 1.2rem !important;
+    gap: 15px !important;
+}
+
+body[data-zoom="large"] .btn-icon {
+    font-size: 1.5rem !important;
+}
+
+/* 大图标模式下的动作按钮 */
+body[data-zoom="large"] .action-btn {
+    padding: 30px !important;
+    min-height: 200px !important;
+    gap: 20px !important;
+}
+
+body[data-zoom="large"] .action-icon {
+    font-size: 4rem !important;
+}
+
+body[data-zoom="large"] .action-name {
+    font-size: 1.5rem !important;
+}
+
+/* 大图标模式下的侧边栏导航 */
+body[data-zoom="large"] .sidebar {
+    width: 300px !important;
+    max-height: calc(100vh - 120px) !important;
+}
+
+body[data-zoom="large"] .nav-item {
+    padding: 20px 25px !important;
+    font-size: 1.3rem !important;
+    gap: 20px !important;
+}
+
+body[data-zoom="large"] .nav-item .nav-icon {
+    font-size: 2rem !important;
+}
+
+/* 大图标模式下的标题 */
+body[data-zoom="large"] h1 {
+    font-size: 2.5rem !important;
+}
+
+body[data-zoom="large"] h2 {
+    font-size: 2.5rem !important;
+}
+
+body[data-zoom="large"] h3 {
+    font-size: 2rem !important;
+}
+
+/* 大图标模式下的页面描述 */
+body[data-zoom="large"] .page-description {
+    font-size: 1.2rem !important;
+}
+
+/* 大图标模式下的摇杆 */
+body[data-zoom="large"] .joystick {
+    width: 300px !important;
+    height: 300px !important;
+}
+
+body[data-zoom="large"] .joystick-stick {
+    width: 120px !important;
+    height: 120px !important;
+}
+
+/* 大图标模式下的序列项 */
+body[data-zoom="large"] .sequence-item {
+    padding: 15px 20px !important;
+    font-size: 1.2rem !important;
+    gap: 15px !important;
+}
+
+/* 大图标模式下的输入字段 */
+body[data-zoom="large"] .input-field {
+    padding: 15px 20px !important;
+    font-size: 1.2rem !important;
+}
+
+/* 大图标模式下的状态项 */
+body[data-zoom="large"] .status-item {
+    padding: 15px 25px !important;
+    font-size: 1.2rem !important;
+    gap: 15px !important;
+}
+
+/* 大图标模式下的状态圆点 */
+body[data-zoom="large"] .status-dot {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+body[data-zoom="large"] .status-dot.online {
+    box-shadow: 0 0 15px var(--success-color) !important;
+}
+
+/* 大图标模式下的设备选择器 */
+body[data-zoom="large"] .device-select-btn {
+    padding: 20px 25px !important;
+    font-size: 1.2rem !important;
+}
+
+body[data-zoom="large"] .device-dropdown-item {
+    padding: 20px 25px !important;
+    font-size: 1.2rem !important;
+    gap: 15px !important;
+}
+
+/* 大图标模式下的通知 */
+body[data-zoom="large"] .notification {
+    padding: 25px 30px !important;
+    min-width: 400px !important;
+    gap: 20px !important;
+    font-size: 1.2rem !important;
+}
+
+body[data-zoom="large"] .notification-icon {
+    font-size: 2rem !important;
+}
+
+/* 大图标模式下的校准控件 */
+body[data-zoom="large"] .servo-control-item {
+    padding: 25px !important;
+}
+
+body[data-zoom="large"] .servo-btn {
+    width: 50px !important;
+    height: 50px !important;
+    font-size: 2rem !important;
+}
+
+body[data-zoom="large"] input[type="range"] {
+    height: 12px !important;
+}
+
+body[data-zoom="large"] input[type="range"]::-webkit-slider-thumb {
+    width: 25px !important;
+    height: 25px !important;
 }
 
 /* Responsive */
