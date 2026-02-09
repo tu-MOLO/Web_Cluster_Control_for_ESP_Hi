@@ -131,13 +131,23 @@
                                         style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                                         <h4 id="discovered-devices-title"
                                             style="color: var(--text-secondary); margin: 0;">已发现设备</h4>
-                                        <div class="toggle-container" style="display: flex; align-items: center;">
-                                            <span class="toggle-label"
-                                                style="font-size: 0.8rem; color: var(--text-secondary); margin-right: 8px;">显示所有</span>
-                                            <label class="switch">
-                                                <input type="checkbox" id="show-all-toggle">
-                                                <span class="slider round"></span>
-                                            </label>
+                                        <div style="display: flex; align-items: center; gap: 15px;">
+                                            <div class="toggle-container" style="display: flex; align-items: center;">
+                                                <span class="toggle-label"
+                                                    style="font-size: 0.8rem; color: var(--text-secondary); margin-right: 8px;">全选</span>
+                                                <label class="switch">
+                                                    <input type="checkbox" id="devices-select-all-toggle">
+                                                    <span class="slider round"></span>
+                                                </label>
+                                            </div>
+                                            <div class="toggle-container" style="display: flex; align-items: center;">
+                                                <span class="toggle-label"
+                                                    style="font-size: 0.8rem; color: var(--text-secondary); margin-right: 8px;">显示所有</span>
+                                                <label class="switch">
+                                                    <input type="checkbox" id="show-all-toggle">
+                                                    <span class="slider round"></span>
+                                                </label>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="devices-list" id="devices-list">
@@ -198,6 +208,9 @@
                                 <span class="btn-icon">📥</span>
                                 <span>从文件导入</span>
                             </button>
+                            <button class="btn btn-outline" id="library-select-all-btn">
+                                <span>全选</span>
+                            </button>
                             <button class="btn btn-danger" id="batch-delete-btn" disabled>
                                 <span class="btn-icon">🗑️</span>
                                 <span>批量删除</span>
@@ -250,7 +263,11 @@
                                             <!-- 设备选项将通过JavaScript生成 -->
                                         </div>
                                     </div>
-
+                                    <div class="device-selector-actions">
+                                        <button class="btn btn-outline select-all-btn" id="control-select-all-btn">
+                                            <span>全选</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -335,7 +352,11 @@
                                             <!-- 设备选项将通过JavaScript生成 -->
                                         </div>
                                     </div>
-
+                                    <div class="device-selector-actions">
+                                        <button class="btn btn-outline select-all-btn" id="actions-select-all-btn">
+                                            <span>全选</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -480,7 +501,11 @@
                                             <!-- 设备选项将通过JavaScript生成 -->
                                         </div>
                                     </div>
-
+                                    <div class="device-selector-actions">
+                                        <button class="btn btn-outline select-all-btn" id="sequence-select-all-btn">
+                                            <span>全选</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

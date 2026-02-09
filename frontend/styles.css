@@ -1399,6 +1399,52 @@ input[type="range"]::-webkit-slider-thumb {
     align-items: center;
 }
 
+.device-selector-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.select-all-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--background-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.select-all-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.select-all-btn:active {
+    transform: translateY(0);
+}
+
+.select-all-btn.all-selected {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+}
+
+.select-all-btn.all-selected:hover {
+    background: rgba(239, 68, 68, 0.2);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
 .status-text {
     display: block;
     width: 100%;

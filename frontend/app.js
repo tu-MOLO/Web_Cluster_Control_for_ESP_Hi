@@ -568,12 +568,18 @@ class App {
         const selectBtn = document.getElementById(`${pageId}-device-select`);
         const dropdown = document.getElementById(`${pageId}-device-dropdown`);
         const connectBtn = document.getElementById(`${pageId}-connect-btn`);
+        const selectAllBtn = document.getElementById(`${pageId}-select-all-btn`);
 
         if (!selectBtn || !dropdown) return;
 
         // 连接按钮事件（仅非校准页面需要）
         if (connectBtn) {
             connectBtn.addEventListener('click', () => this.connectPageDevices(pageId));
+        }
+
+        // 全选/取消全选按钮事件（仅非校准页面需要）
+        if (selectAllBtn && pageId !== 'calibration') {
+            selectAllBtn.addEventListener('click', () => this.toggleSelectAll(pageId));
         }
 
         // 下拉菜单切换
@@ -669,9 +675,13 @@ class App {
                     if (e.target.tagName === 'INPUT') return;
 
                     const checkbox = item.querySelector('input');
-                    // 直接将当前设备加入选择，不管之前的状态
-                    checkbox.checked = true;
-                    this.pageDeviceSelections[pageId].add(ip);
+                    // 切换选择状态
+                    checkbox.checked = !checkbox.checked;
+                    if (checkbox.checked) {
+                        this.pageDeviceSelections[pageId].add(ip);
+                    } else {
+                        this.pageDeviceSelections[pageId].delete(ip);
+                    }
                     this.updateSelectedDevicesDisplay(pageId);
                 });
 
@@ -708,6 +718,7 @@ class App {
         const selectedDevices = this.pageDeviceSelections[pageId];
         const selectedDisplay = document.getElementById(`${pageId}-selected-devices`);
         const connectBtn = document.getElementById(`${pageId}-connect-btn`);
+        const selectAllBtn = document.getElementById(`${pageId}-select-all-btn`);
 
         if (!selectedDisplay) return;
 
@@ -724,6 +735,55 @@ class App {
         // 更新连接按钮状态（仅非校准页面需要）
         if (connectBtn) {
             connectBtn.disabled = selectedDevices.size === 0;
+        }
+
+        // 更新全选按钮状态（仅非校准页面需要）
+        if (selectAllBtn && pageId !== 'calibration') {
+            this.updateSelectAllButton(pageId);
+        }
+    }
+
+    toggleSelectAll(pageId) {
+        const displayDevices = this.deviceState.getOnlineDevices();
+        const selectedDevices = this.pageDeviceSelections[pageId];
+
+        if (displayDevices.length === 0) {
+            this.showNotification('暂无在线设备，无法全选', 'warning');
+            return;
+        }
+
+        // 检查是否已全选
+        const isAllSelected = displayDevices.every(ip => selectedDevices.has(ip));
+
+        if (isAllSelected) {
+            // 取消全选
+            selectedDevices.clear();
+        } else {
+            // 全选
+            displayDevices.forEach(ip => selectedDevices.add(ip));
+        }
+
+        // 更新显示
+        this.updateSelectedDevicesDisplay(pageId);
+        this.renderPageDeviceSelector(pageId);
+    }
+
+    updateSelectAllButton(pageId) {
+        const displayDevices = this.deviceState.getOnlineDevices();
+        const selectedDevices = this.pageDeviceSelections[pageId];
+        const selectAllBtn = document.getElementById(`${pageId}-select-all-btn`);
+
+        if (!selectAllBtn) return;
+
+        // 检查是否已全选
+        const isAllSelected = displayDevices.length > 0 && displayDevices.every(ip => selectedDevices.has(ip));
+
+        if (isAllSelected) {
+            selectAllBtn.classList.add('all-selected');
+            selectAllBtn.querySelector('span').textContent = '取消全选';
+        } else {
+            selectAllBtn.classList.remove('all-selected');
+            selectAllBtn.querySelector('span').textContent = '全选';
         }
     }
 
@@ -901,6 +961,7 @@ class App {
         const scanBtn = document.getElementById('scan-btn');
         const connectBtn = document.getElementById('connect-selected-btn');
         const toggle = document.getElementById('show-all-toggle');
+        const selectAllToggle = document.getElementById('devices-select-all-toggle');
 
         scanBtn.addEventListener('click', () => this.startScan());
         connectBtn.addEventListener('click', () => this.connectSelectedDevices());
@@ -911,6 +972,12 @@ class App {
                 this.renderDevices();
             });
         }
+
+        if (selectAllToggle) {
+            selectAllToggle.addEventListener('change', (e) => {
+                this.toggleDevicesSelectAll(e.target.checked);
+            });
+        }
     }
 
     // ==================== 设备库管理 ====================
@@ -919,8 +986,14 @@ class App {
         this.librarySelectedDevices = new Set();
 
         const batchDeleteBtn = document.getElementById('batch-delete-btn');
+        const selectAllBtn = document.getElementById('library-select-all-btn');
+        
         if (batchDeleteBtn) {
             batchDeleteBtn.addEventListener('click', () => this.batchDeleteDevices());
+        }
+
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', () => this.toggleLibrarySelectAll());
         }
         
         // 初始化导入导出功能
@@ -1335,6 +1408,7 @@ class App {
                     item.classList.add('selected');
                 }
                 connectBtn.disabled = this.selectedDevices.size === 0;
+                this.updateDevicesSelectAllButton();
             });
 
             // 删除按钮事件
@@ -1349,7 +1423,49 @@ class App {
         });
 
         connectBtn.disabled = this.selectedDevices.size === 0;
+        this.updateDevicesSelectAllButton();
         this.isRendering.devices = false;
+    }
+
+    toggleDevicesSelectAll(isChecked) {
+        let devicesToShow = [];
+        if (this.showAllDevices) {
+            devicesToShow = this.deviceState.getAllDevices();
+        } else {
+            devicesToShow = this.deviceState.getOnlineDevices();
+        }
+
+        if (devicesToShow.length === 0) {
+            this.showNotification('暂无设备，无法全选', 'warning');
+            const selectAllToggle = document.getElementById('devices-select-all-toggle');
+            if (selectAllToggle) {
+                selectAllToggle.checked = false;
+            }
+            return;
+        }
+
+        if (isChecked) {
+            devicesToShow.forEach(ip => this.selectedDevices.add(ip));
+        } else {
+            this.selectedDevices.clear();
+        }
+
+        this.renderDevices();
+    }
+
+    updateDevicesSelectAllButton() {
+        const selectAllToggle = document.getElementById('devices-select-all-toggle');
+        if (!selectAllToggle) return;
+
+        let devicesToShow = [];
+        if (this.showAllDevices) {
+            devicesToShow = this.deviceState.getAllDevices();
+        } else {
+            devicesToShow = this.deviceState.getOnlineDevices();
+        }
+
+        const isAllSelected = devicesToShow.length > 0 && devicesToShow.every(ip => this.selectedDevices.has(ip));
+        selectAllToggle.checked = isAllSelected;
     }
     
     // 更新单个设备项的状态（增量更新）
@@ -1513,6 +1629,7 @@ class App {
                     item.classList.remove('selected');
                 }
                 this.updateBatchDeleteButton();
+                this.updateLibrarySelectAllButton();
             });
 
             // 点击设备项切换选中状态
@@ -1529,6 +1646,7 @@ class App {
                     item.classList.remove('selected');
                 }
                 this.updateBatchDeleteButton();
+                this.updateLibrarySelectAllButton();
             });
 
             // 重命名按钮事件
@@ -1550,7 +1668,43 @@ class App {
         });
 
         this.updateBatchDeleteButton();
+        this.updateLibrarySelectAllButton();
         this.isRendering.deviceLibrary = false;
+    }
+
+    toggleLibrarySelectAll() {
+        const devicesToShow = this.deviceState.getAllDevices();
+
+        if (devicesToShow.length === 0) {
+            this.showNotification('设备库为空，无法全选', 'warning');
+            return;
+        }
+
+        const isAllSelected = devicesToShow.every(ip => this.librarySelectedDevices.has(ip));
+
+        if (isAllSelected) {
+            this.librarySelectedDevices.clear();
+        } else {
+            devicesToShow.forEach(ip => this.librarySelectedDevices.add(ip));
+        }
+
+        this.renderDeviceLibrary();
+    }
+
+    updateLibrarySelectAllButton() {
+        const selectAllBtn = document.getElementById('library-select-all-btn');
+        if (!selectAllBtn) return;
+
+        const devicesToShow = this.deviceState.getAllDevices();
+        const isAllSelected = devicesToShow.length > 0 && devicesToShow.every(ip => this.librarySelectedDevices.has(ip));
+
+        if (isAllSelected) {
+            selectAllBtn.classList.add('all-selected');
+            selectAllBtn.querySelector('span').textContent = '取消全选';
+        } else {
+            selectAllBtn.classList.remove('all-selected');
+            selectAllBtn.querySelector('span').textContent = '全选';
+        }
     }
 
     updateBatchDeleteButton() {
