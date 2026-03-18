@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.2-blue.svg) ![Python](https://img.shields.io/badge/python-3.6+-green.svg) ![License](https://img.shields.io/badge/license-MIT-orange.svg)
+![Version](https://img.shields.io/badge/version-1.0.2-blue.svg) ![Python](https://img.shields.io/badge/python-3.6+-green.svg) ![License](https://img.shields.io/badge/license-NonCommercial-red.svg)
 
 一个功能强大的 ESP-Hi 机器狗集群管理系统，支持多设备同时连接、实时控制、动作编排和舵机校准等功能。
 
@@ -23,6 +23,8 @@
 - **设备重命名**：为设备设置自定义名称，便于识别
 - **状态显示**：实时显示设备在线/离线/连接状态
 - **显示切换**：可切换查看"已发现设备"或"所有设备"
+- **全选功能**：支持一键全选/取消全选设备，提升批量操作效率
+- **自动断开**：设备离线时自动断开连接并清理状态，确保系统稳定
 
 ### 🎮 运动控制
 
@@ -200,6 +202,22 @@ http://localhost:5000
 2. 点击"连接选中设备"按钮
 3. 等待连接完成，成功设备会显示为绿色
 
+#### 全选/取消全选
+
+- **设备管理页面**：
+  1. 点击设备列表顶部的"全选"复选框
+  2. 再次点击可取消全选
+  
+- **功能页面**（运动控制、预设动作、动作序列）：
+  1. 点击设备选择器旁的"全选"按钮
+  2. 按钮状态会切换为"取消全选"
+  3. 再次点击可取消全选
+
+- **设备库页面**：
+  1. 点击"全选"按钮选中所有设备
+  2. 再次点击取消全选
+  3. 配合"批量删除"可快速清理设备
+
 #### 设备重命名
 
 1. 在设备库页面找到要重命名的设备
@@ -246,8 +264,9 @@ http://localhost:5000
 #### 进入校准模式
 
 1. 在"舵机校准"页面选择一台设备
-2. 点击"进入校准模式"按钮
-3. 等待设备进入校准状态
+2. 系统会自动连接所选设备（无需手动点击连接）
+3. 点击"进入校准模式"按钮
+4. 等待设备进入校准状态
 
 #### 调整舵机
 
@@ -326,8 +345,8 @@ frontend/
 | --------------------------------- | ---- | -------------- |
 | `/api/scan/start`               | POST | 开始设备扫描   |
 | `/api/devices`                  | GET  | 获取设备列表   |
-| `/api/devices/add`              | POST | 添加设备       |
-| `/api/devices/delete`           | POST | 删除设备       |
+| `/api/devices/add`              | POST | 添加单个设备   |
+| `/api/devices/delete`           | POST | 删除指定设备   |
 | `/api/devices/select`           | POST | 选择并连接设备 |
 | `/api/devices/disconnect`       | POST | 断开设备连接   |
 | `/api/devices/rename`           | POST | 重命名设备     |
@@ -347,6 +366,8 @@ frontend/
 | ------------------------- | -------------- | ------------ |
 | `connect`               | 客户端→服务器 | 客户端连接   |
 | `disconnect`            | 客户端→服务器 | 客户端断开   |
+| `ping`                  | 客户端→服务器 | 心跳检测请求 |
+| `pong`                  | 服务器→客户端 | 心跳检测响应 |
 | `scan_complete`         | 服务器→客户端 | 扫描完成     |
 | `device_status_changed` | 服务器→客户端 | 设备状态变化 |
 | `action_executed`       | 服务器→客户端 | 动作执行结果 |
@@ -356,9 +377,9 @@ frontend/
 ## 📂 项目结构
 
 ```
-ESP-Hi 机器狗集群管理系统 V1.0.1/
+ESP-Hi 机器狗集群管理系统 V1.0.2/
 ├── .gitignore              # Git 忽略文件
-├── LICENSE                 # MIT 许可证
+├── LICENSE                 # 自定义非商业许可证
 ├── README.md               # 项目文档
 ├── esp_hi.spec            # PyInstaller 配置
 ├── build.bat              # 打包脚本
@@ -370,7 +391,6 @@ ESP-Hi 机器狗集群管理系统 V1.0.1/
 │   ├── device_manager.py  # 设备管理模块
 │   ├── scanner_service.py # 设备扫描模块
 │   ├── calibration_service.py # 舵机校准模块
-│   ├── devices.json       # 设备数据存储
 │   └── requirements.txt   # Python 依赖
 │
 ├── frontend/             # 前端代码
@@ -381,8 +401,11 @@ ESP-Hi 机器狗集群管理系统 V1.0.1/
 │
 └── dist/                # 打包输出目录
     ├── ESP_HI_Control.exe # 可执行文件
-    └── devices.json     # 设备数据存储
+    └── devices.json     # 设备数据存储（运行时生成）
 ```
+
+**注意**：`devices.json` 设备数据文件在运行时动态生成，位于 `dist/` 目录（打包环境）或项目根目录（开发环境）。
+
 
 ## 🔧 开发指南
 
@@ -496,6 +519,31 @@ A: 解决方案：
 - ✨ 动作序列编排
 - ✨ WebSocket 实时通信
 - ✨ 主题切换功能
+
+---
+
+## 📄 许可证说明
+
+本软件采用**自定义非商业许可证**。
+
+### 使用范围
+
+✅ **允许的使用方式：**
+- 个人学习、研究和教育用途
+- 非商业开源项目中的使用和修改
+- 制作备份副本
+
+❌ **禁止的使用方式：**
+- 任何商业目的的使用
+- 销售、租赁或以其他方式获取商业利益
+- 集成到商业产品或服务中
+- 提供商业技术支持服务
+
+### 商业授权
+
+如需将本软件用于商业目的，请联系版权持有者获取商业授权。
+
+版权所有 © 2026 Molo 保留所有权利。
 
 ---
 
