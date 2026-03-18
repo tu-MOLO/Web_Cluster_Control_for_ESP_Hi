@@ -1,8 +1,8 @@
-# ESP-Hi 机器狗集群管理系统 V1.0.1
+# ESP-Hi 机器狗集群管理系统 V1.0.2
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg) ![Python](https://img.shields.io/badge/python-3.6+-green.svg) ![License](https://img.shields.io/badge/license-MIT-orange.svg)
+![Version](https://img.shields.io/badge/version-1.0.2-blue.svg) ![Python](https://img.shields.io/badge/python-3.6+-green.svg) ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
 一个功能强大的 ESP-Hi 机器狗集群管理系统，支持多设备同时连接、实时控制、动作编排和舵机校准等功能。
 
@@ -458,6 +458,17 @@ A: 解决方案：
 - 清理缓存：删除 `build` 和 `dist` 目录后重试
 
 ## 📝 版本历史
+
+### V1.0.2 (2026-03-18)
+
+- ✨ 新增设备全选功能到设备管理和各功能页面
+- ✨ 新增大图标模式切换功能（为视障碍人群设计）
+- 🐛 优化设备选择逻辑和全选功能
+- 🐛 增强设备连接管理和UI渲染性能
+- 📦 优化README中的徽章排版
+- 📦 更新版本至1.0.2并完善打包配置
+- 📦 优化build.bat脚本增加spec文件检查逻辑
+- 📄 更新LICENSE文件内容并完善授权条款
 
 ### V1.0.1 (2026-02-06)
 

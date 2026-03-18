@@ -45,13 +45,25 @@ if exist "dist" (
     rmdir /s /q "dist"
     echo Removed dist directory.
 )
-if exist "*.spec" (
-    echo Spec file found, will use existing configuration.
+echo.
+echo [5/6] Checking spec file...
+set SPEC_FILE=esp_hi.spec
+if not "%SPEC_FILE_ENV%"=="" (
+    set SPEC_FILE=%SPEC_FILE_ENV%
+    echo Using spec file from environment: %SPEC_FILE%
+) else (
+    if exist "%SPEC_FILE%" (
+        echo Using default spec file: %SPEC_FILE%
+    ) else (
+        echo Error: Spec file '%SPEC_FILE%' not found.
+        pause
+        exit /b
+    )
 )
 
 echo.
-echo [5/6] Building executable with PyInstaller...
-pyinstaller esp_hi.spec --clean
+echo [6/6] Building executable with PyInstaller...
+pyinstaller "%SPEC_FILE%" --clean
 if %errorlevel% neq 0 (
     echo Error: PyInstaller build failed.
     pause
@@ -59,7 +71,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [6/6] Build completed successfully!
+echo Build completed successfully!
 echo.
 echo Executable location: dist\ESP_HI_Control.exe
 echo.
