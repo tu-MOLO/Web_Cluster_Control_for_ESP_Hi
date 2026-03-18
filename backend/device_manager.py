@@ -8,8 +8,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 控制配置
-MAX_CONCURRENT_THREADS = 20
-CONTINUOUS_MOVE_INTERVAL = 500
+MAX_CONCURRENT_THREADS = 20  # 最大并发线程数，用于批量设备操作
+CONTINUOUS_MOVE_INTERVAL_MS = 500  # 连续移动命令发送间隔（毫秒）
 
 ACTION_NAMES = {
     '1': '趴下', '2': '鞠躬', '3': '后仰', '4': '摇摆',
@@ -84,7 +84,7 @@ class ServoDogController:
         if direction not in ['F', 'B', 'L', 'R']:
             return {"success": False, "error": "无效的移动方向"}
         
-        move_interval = delay * 1000 if delay is not None else CONTINUOUS_MOVE_INTERVAL
+        move_interval = delay * 1000 if delay is not None else CONTINUOUS_MOVE_INTERVAL_MS
         if move_interval <= 0:
             return {"success": False, "error": "延迟时间必须大于0"}
         
@@ -205,112 +205,66 @@ class DeviceManager:
         except:
             return (device, None, False)
 
-    def execute_action(self, action_id: str) -> Dict:
-        """批量执行动作"""
+    def _execute_batch(self, operation_func, *args, **kwargs) -> Dict:
+        """通用批量执行方法
+
+        Args:
+            operation_func: 对每个设备执行的操作函数，接收 controller 和额外参数
+            *args, **kwargs: 传递给操作函数的额外参数
+
+        Returns:
+            Dict: 设备到结果的映射
+        """
         if not self.controllers:
             return {"error": "没有可用设备"}
-        
+
         results = {}
         futures = []
-        
+
         for device, controller in self.controllers.items():
             futures.append(
                 self.executor.submit(
-                    lambda d, c: (d, c.execute_action(action_id)),
+                    lambda d, c: (d, operation_func(c, *args, **kwargs)),
                     device, controller
                 )
             )
-        
+
         for future in as_completed(futures):
             device, result = future.result()
             results[device] = result
-        
+
         return results
+
+    def execute_action(self, action_id: str) -> Dict:
+        """批量执行动作"""
+        return self._execute_batch(
+            lambda controller, action_id: controller.execute_action(action_id),
+            action_id
+        )
 
     def execute_move(self, direction: str) -> Dict:
         """批量执行移动"""
-        if not self.controllers:
-            return {"error": "没有可用设备"}
-        
-        results = {}
-        futures = []
-        
-        for device, controller in self.controllers.items():
-            futures.append(
-                self.executor.submit(
-                    lambda d, c, dir: (d, c.execute_move(dir)),
-                    device, controller, direction
-                )
-            )
-        
-        for future in as_completed(futures):
-            device, result = future.result()
-            results[device] = result
-        
-        return results
+        return self._execute_batch(
+            lambda controller, direction: controller.execute_move(direction),
+            direction
+        )
 
     def start_continuous_move(self, direction: str, delay: float = None) -> Dict:
         """批量开始连续移动"""
-        if not self.controllers:
-            return {"error": "没有可用设备"}
-        
-        results = {}
-        futures = []
-        
-        for device, controller in self.controllers.items():
-            futures.append(
-                self.executor.submit(
-                    lambda d, c, dir, del_val: (d, c.start_continuous_move(dir, del_val)),
-                    device, controller, direction, delay
-                )
-            )
-        
-        for future in as_completed(futures):
-            device, result = future.result()
-            results[device] = result
-        
-        return results
+        return self._execute_batch(
+            lambda controller, direction, delay: controller.start_continuous_move(direction, delay),
+            direction, delay
+        )
 
     def stop_continuous_move(self) -> Dict:
         """批量停止连续移动"""
-        if not self.controllers:
-            return {"error": "没有可用设备"}
-        
-        results = {}
-        futures = []
-        
-        for device, controller in self.controllers.items():
-            futures.append(
-                self.executor.submit(
-                    lambda d, c: (d, c.stop_continuous_move()),
-                    device, controller
-                )
-            )
-        
-        for future in as_completed(futures):
-            device, result = future.result()
-            results[device] = result
-        
-        return results
+        return self._execute_batch(
+            lambda controller: controller.stop_continuous_move()
+        )
 
     def execute_sequence(self, sequence: List[Dict]) -> Dict:
         """批量执行序列"""
-        if not self.controllers:
-            return {"error": "没有可用设备"}
-        
-        results = {}
-        futures = []
-        
-        for device, controller in self.controllers.items():
-            futures.append(
-                self.executor.submit(
-                    lambda d, c, seq: (d, c.run_sequence(seq)),
-                    device, controller, sequence
-                )
-            )
-        
-        for future in as_completed(futures):
-            device, result = future.result()
-            results[device] = result
-        
-        return results
+        return self._execute_batch(
+            lambda controller, sequence: controller.run_sequence(sequence),
+            sequence
+        )

@@ -138,7 +138,7 @@ class DeviceStateManager {
 
     // 获取所有设备列表
     getAllDevices() {
-        return [...this.deviceMap.keys()];
+        return [...this.devices];
     }
 
     // 批量更新设备状态
@@ -617,20 +617,14 @@ class App {
         if (displayDevices.length === 0) {
             const emptyText = '暂无在线设备';
             dropdown.innerHTML = `<div class="device-dropdown-item empty">${emptyText}</div>`;
+            // 更新全选按钮状态
+            this.updateSelectAllButton(pageId);
             return;
         }
 
-        // 生成设备选项前，先将已连接设备添加到选择中
-        if (pageId !== 'calibration') {
-            // 清空之前的选择
-            this.pageDeviceSelections[pageId].clear();
-            // 将所有已连接设备添加到选择中
-            this.deviceState.getConnectedDevices().forEach(ip => {
-                if (this.deviceState.getDeviceStatus(ip).online) {
-                    this.pageDeviceSelections[pageId].add(ip);
-                }
-            });
-        }
+        // 注意：不再自动将已连接设备添加到选择中
+        // 这样可以保留用户手动选择的状态（包括取消全选后的空选择状态）
+        // 只有在页面首次加载且选择为空时，才在 init 或 loadDevices 中设置默认选择
 
         // 生成设备选项
         displayDevices.forEach(ip => {
@@ -703,6 +697,9 @@ class App {
 
         // 更新已选设备显示
         this.updateSelectedDevicesDisplay(pageId);
+
+        // 更新全选按钮状态
+        this.updateSelectAllButton(pageId);
     }
 
     togglePageDeviceSelection(pageId, deviceIp, isSelected) {
@@ -747,6 +744,8 @@ class App {
         const displayDevices = this.deviceState.getOnlineDevices();
         const selectedDevices = this.pageDeviceSelections[pageId];
 
+        console.log(`[toggleSelectAll] 页面: ${pageId}, 在线设备: ${displayDevices.length}, 当前选中: ${selectedDevices.size}`);
+
         if (displayDevices.length === 0) {
             this.showNotification('暂无在线设备，无法全选', 'warning');
             return;
@@ -754,14 +753,19 @@ class App {
 
         // 检查是否已全选
         const isAllSelected = displayDevices.every(ip => selectedDevices.has(ip));
+        console.log(`[toggleSelectAll] 是否已全选: ${isAllSelected}`);
 
         if (isAllSelected) {
             // 取消全选
             selectedDevices.clear();
+            this.showNotification('已取消全选', 'info');
         } else {
             // 全选
             displayDevices.forEach(ip => selectedDevices.add(ip));
+            this.showNotification(`已全选 ${displayDevices.length} 台设备`, 'success');
         }
+
+        console.log(`[toggleSelectAll] 操作后选中数量: ${selectedDevices.size}`);
 
         // 更新显示
         this.updateSelectedDevicesDisplay(pageId);
@@ -773,17 +777,27 @@ class App {
         const selectedDevices = this.pageDeviceSelections[pageId];
         const selectAllBtn = document.getElementById(`${pageId}-select-all-btn`);
 
-        if (!selectAllBtn) return;
+        if (!selectAllBtn) {
+            console.log(`[updateSelectAllButton] 未找到按钮: ${pageId}-select-all-btn`);
+            return;
+        }
 
-        // 检查是否已全选
+        // 检查是否已全选（有在线设备且所有在线设备都被选中）
         const isAllSelected = displayDevices.length > 0 && displayDevices.every(ip => selectedDevices.has(ip));
+        console.log(`[updateSelectAllButton] 页面: ${pageId}, 是否全选: ${isAllSelected}, 在线设备: ${displayDevices.length}, 选中: ${selectedDevices.size}`);
 
         if (isAllSelected) {
             selectAllBtn.classList.add('all-selected');
-            selectAllBtn.querySelector('span').textContent = '取消全选';
+            selectAllBtn.classList.remove('btn-outline');
+            const span = selectAllBtn.querySelector('span');
+            if (span) span.textContent = '取消全选';
+            console.log(`[updateSelectAllButton] 设置为"取消全选"样式`);
         } else {
             selectAllBtn.classList.remove('all-selected');
-            selectAllBtn.querySelector('span').textContent = '全选';
+            selectAllBtn.classList.add('btn-outline');
+            const span = selectAllBtn.querySelector('span');
+            if (span) span.textContent = '全选';
+            console.log(`[updateSelectAllButton] 设置为"全选"样式`);
         }
     }
 
@@ -948,6 +962,20 @@ class App {
                 pages.forEach(page => {
                     if (page.id === targetPageId) {
                         page.classList.add('active');
+                        
+                        // 当切换到设备管理页或设备库页时，重新渲染设备列表
+                        if (targetPageId === 'devices-page' || targetPageId === 'device-library-page') {
+                            // 清除渲染状态标记，允许重新渲染
+                            this.isRendering.devices = false;
+                            this.isRendering.deviceLibrary = false;
+                            
+                            // 重新渲染当前页面的设备列表
+                            if (targetPageId === 'devices-page') {
+                                this.renderDevices();
+                            } else if (targetPageId === 'device-library-page') {
+                                this.renderDeviceLibrary();
+                            }
+                        }
                     } else {
                         page.classList.remove('active');
                     }
@@ -970,6 +998,7 @@ class App {
             toggle.addEventListener('change', (e) => {
                 this.showAllDevices = e.target.checked;
                 this.renderDevices();
+                this.renderDeviceLibrary(); // 同步更新设备库页面的设备列表
             });
         }
 
@@ -1261,6 +1290,18 @@ class App {
                     });
                     // 同时将这些设备标记为选中，方便用户操作
                     this.selectedDevices = new Set(data.connected_devices);
+                    
+                    // 将已连接设备设置为各页面的默认选择（仅在页面选择为空时）
+                    const pagesToSync = ['control', 'actions', 'sequence'];
+                    pagesToSync.forEach(pageId => {
+                        if (this.pageDeviceSelections[pageId].size === 0) {
+                            data.connected_devices.forEach(ip => {
+                                if (this.deviceState.getDeviceStatus(ip).online) {
+                                    this.pageDeviceSelections[pageId].add(ip);
+                                }
+                            });
+                        }
+                    });
                 }
 
                 this.renderDevices();
@@ -1268,7 +1309,6 @@ class App {
                 this.renderConnectedDevices();
                 this.updateStatus();
                 this.updateCalibrationSelect(); // 确保校准下拉框有值
-                this.syncPageSelections(); // Sync dropdowns with loaded connections
                 this.updateAllPageDeviceSelectors(); // 更新所有页面的设备选择器
 
                 // 恢复校准状态
@@ -1356,6 +1396,7 @@ class App {
                 </div>
             `;
             connectBtn.disabled = true;
+            this.isRendering.devices = false;
             return;
         }
 
@@ -1573,6 +1614,7 @@ class App {
                 </div>
             `;
             if (batchDeleteBtn) batchDeleteBtn.disabled = true;
+            this.isRendering.deviceLibrary = false;
             return;
         }
 
@@ -1924,7 +1966,7 @@ class App {
     renderConnectedDevices() {
         if (this.isRendering.connectedDevices) return;
         this.isRendering.connectedDevices = true;
-        
+
         const lists = [
             document.getElementById('connected-devices-list'),
             document.getElementById('library-connected-devices-list')
@@ -1954,11 +1996,24 @@ class App {
                 `;
                 return;
             }
+        });
+
+        // 如果所有列表都已处理完毕（没有已连接设备），重置渲染标记
+        if (connectedArray.length === 0) {
+            this.isRendering.connectedDevices = false;
+            return;
+        }
+
+        // 渲染所有已连接设备列表
+        lists.forEach(list => {
+            if (!list) return;
 
             list.innerHTML = '';
             connectedArray.forEach(ip => {
                 const item = document.createElement('div');
                 item.className = 'device-item';
+                // 添加data-ip属性用于事件委托
+                item.dataset.ip = ip;
 
                 const displayName = this.getDeviceDisplayName(ip);
                 const deviceStatus = this.deviceState.getDeviceStatus(ip);
@@ -1972,26 +2027,54 @@ class App {
                         <div class="device-ip-secondary">${ip}</div>
                     </div>
                 </div>
-                <button class="device-delete-btn" title="断开连接">×</button>
+                <button class="device-delete-btn" data-action="disconnect" data-ip="${ip}" title="断开连接">×</button>
             `;
-
-                // 添加断开连接按钮的点击事件
-                const deleteBtn = item.querySelector('.device-delete-btn');
-                deleteBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (confirm(`确定要断开设备 ${ip} 的连接吗？`)) {
-                        this.disconnectDevice(ip);
-                    }
-                });
 
                 list.appendChild(item);
             });
+
+            // 使用事件委托处理断开连接按钮点击
+            // 先移除旧的事件监听器（如果存在）
+            if (list._disconnectClickHandler) {
+                list.removeEventListener('click', list._disconnectClickHandler);
+            }
+
+            // 创建新的事件处理函数
+            list._disconnectClickHandler = (e) => {
+                // 检查点击的是否是断开连接按钮
+                const deleteBtn = e.target.closest('.device-delete-btn[data-action="disconnect"]');
+                if (!deleteBtn) return;
+
+                e.preventDefault();
+                e.stopPropagation();
+
+                const ip = deleteBtn.dataset.ip;
+                if (!ip) return;
+
+                console.log(`[DEBUG] 断开按钮被点击，设备IP: ${ip}`);
+
+                // 显示确认对话框
+                const userConfirmed = confirm(`确定要断开设备 ${ip} 的连接吗？`);
+                console.log(`[DEBUG] 用户确认结果: ${userConfirmed}`);
+
+                // 只有在用户确认后才执行断开操作
+                if (userConfirmed) {
+                    console.log(`[DEBUG] 用户确认断开，开始执行断开操作`);
+                    this.disconnectDevice(ip);
+                } else {
+                    console.log(`[DEBUG] 用户取消断开操作`);
+                }
+            };
+
+            // 绑定事件监听器
+            list.addEventListener('click', list._disconnectClickHandler);
         });
-        
+
         this.isRendering.connectedDevices = false;
     }
 
     async disconnectDevice(ip) {
+        console.log(`[DEBUG] 开始断开设备 ${ip} 的连接`);
         try {
             const response = await fetch(`${API_BASE}/devices/disconnect`, {
                 method: 'POST',
@@ -2001,6 +2084,7 @@ class App {
             const data = await response.json();
 
             if (data.success) {
+                console.log(`[DEBUG] 设备 ${ip} 断开连接成功`);
                 // 更新设备连接状态
                 this.deviceState.setDeviceConnected(ip, false);
                 this.selectedDevices.delete(ip);
@@ -2016,6 +2100,7 @@ class App {
                 throw new Error(data.error);
             }
         } catch (error) {
+            console.log(`[DEBUG] 设备 ${ip} 断开连接失败:`, error.message);
             this.showNotification(`断开连接失败: ${error.message}`, 'error');
         }
     }

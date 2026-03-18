@@ -420,33 +420,52 @@ def stop_continuous_move():
 @app.route('/api/control/sequence', methods=['POST'])
 def execute_sequence():
     """执行自定义动作序列"""
-    if calibration_service.current_device:
+    try:
+        if calibration_service.current_device:
+            return jsonify({
+                'success': False,
+                'error': '舵机校准模式下无法执行此操作，请先退出舵机校准模式'
+            }), 400
+
+        if not device_manager.controllers:
+            return jsonify({
+                'success': False,
+                'error': '没有已连接的设备，请先连接设备'
+            }), 400
+
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': '无效的请求数据'
+            }), 400
+
+        sequence = data.get('sequence', [])
+        if not isinstance(sequence, list):
+            return jsonify({
+                'success': False,
+                'error': '序列必须是数组格式'
+            }), 400
+
+        def run_sequence():
+            socketio.emit('sequence_status', {'status': 'started', 'message': '序列开始执行'})
+            try:
+                device_manager.execute_sequence(sequence)
+                socketio.emit('sequence_status', {'status': 'completed', 'message': '序列执行完成'})
+            except Exception as e:
+                logger.error(f"序列执行失败: {str(e)}")
+                socketio.emit('sequence_status', {'status': 'error', 'message': f'序列执行出错: {str(e)}'})
+
+        # 在后台线程运行序列，避免阻塞主线程
+        socketio.start_background_task(run_sequence)
+
+        return jsonify({'success': True, 'message': '序列已开始执行'})
+    except Exception as e:
+        logger.error(f"执行序列失败: {str(e)}")
         return jsonify({
             'success': False,
-            'error': '舵机校准模式下无法执行此操作，请先退出舵机校准模式'
-        }), 400
-
-    if not device_manager.controllers:
-        return jsonify({
-            'success': False,
-            'error': '没有已连接的设备，请先连接设备'
-        }), 400
-
-    data = request.json
-    sequence = data.get('sequence', [])
-    
-    def run_sequence():
-        socketio.emit('sequence_status', {'status': 'started', 'message': '序列开始执行'})
-        try:
-            device_manager.execute_sequence(sequence)
-            socketio.emit('sequence_status', {'status': 'completed', 'message': '序列执行完成'})
-        except Exception as e:
-            socketio.emit('sequence_status', {'status': 'error', 'message': f'序列执行出错: {str(e)}'})
-
-    # 在后台线程运行序列，避免阻塞主线程
-    socketio.start_background_task(run_sequence)
-    
-    return jsonify({'success': True, 'message': 'Sequence started'})
+            'error': f'执行序列失败: {str(e)}'
+        }), 500
 
 # ==================== 校准相关 API ====================
 

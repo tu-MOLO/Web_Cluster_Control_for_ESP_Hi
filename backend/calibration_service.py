@@ -1,11 +1,12 @@
 import requests
 import logging
 from typing import Dict, Optional
+from device_manager import CURL_HEADERS
 
 logger = logging.getLogger(__name__)
 
 # 超时时间
-HTTP_TIMEOUT = 3.0
+HTTP_TIMEOUT_SECONDS = 3.0  # HTTP请求超时时间（秒）
 
 # 四肢编号映射
 SERVO_MAP = {
@@ -35,14 +36,11 @@ class CalibrationService:
         if self.current_device != device or self.session is None:
             self.current_device = device
             self.session = requests.Session()
-            self.session.headers.update({
-                "Accept": "*/*",
-                "Accept-Language": "zh-CN,zh;q=0.9,zh-HK;q=0.8",
-                "Connection": "keep-alive",
-                "Content-Type": "application/json",
-                "Referer": f"http://{device}/",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
+            # 使用共享的 CURL_HEADERS 并添加设备特定的 Referer
+            headers = CURL_HEADERS.copy()
+            headers["Referer"] = f"http://{device}/"
+            headers["Host"] = device
+            self.session.headers.update(headers)
             self.session.verify = False
 
     def _send_request(self, endpoint: str, data: Optional[Dict] = None, method: str = "POST") -> Dict:
@@ -54,9 +52,9 @@ class CalibrationService:
             url = f"http://{self.current_device}/{endpoint}"
             
             if method.upper() == "GET":
-                response = self.session.get(url, timeout=HTTP_TIMEOUT)
+                response = self.session.get(url, timeout=HTTP_TIMEOUT_SECONDS)
             else:  # POST
-                response = self.session.post(url, json=data, timeout=HTTP_TIMEOUT)
+                response = self.session.post(url, json=data, timeout=HTTP_TIMEOUT_SECONDS)
             
             response.raise_for_status()
             return {"success": True, "response": response.text}

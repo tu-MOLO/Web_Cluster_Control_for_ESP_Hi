@@ -1434,15 +1434,18 @@ input[type="range"]::-webkit-slider-thumb {
     transform: translateY(0);
 }
 
-.select-all-btn.all-selected {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: var(--danger-color);
-    color: var(--danger-color);
+.select-all-btn.all-selected,
+.btn.select-all-btn.all-selected {
+    background: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    color: white !important;
 }
 
-.select-all-btn.all-selected:hover {
-    background: rgba(239, 68, 68, 0.2);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+.select-all-btn.all-selected:hover,
+.btn.select-all-btn.all-selected:hover {
+    background: var(--primary-hover) !important;
+    border-color: var(--primary-hover) !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .status-text {

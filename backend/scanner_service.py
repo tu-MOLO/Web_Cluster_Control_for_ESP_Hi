@@ -9,9 +9,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 扫描配置
-SCAN_PORT = 80
-SCAN_TIMEOUT = 0.8
-SCAN_THREADS = 50
+SCAN_PORT = 80  # ESP-HI设备HTTP服务端口
+SCAN_TIMEOUT_SECONDS = 0.8  # 单设备扫描超时时间（秒），根据网络延迟调整
+SCAN_THREADS = 50  # 并发扫描线程数，建议根据网络带宽和设备性能调整
 
 # 设备文件路径，支持PyInstaller打包
 if getattr(sys, 'frozen', False):
@@ -64,7 +64,7 @@ class ScannerService:
                 url=url,
                 data='{}',
                 headers=headers,
-                timeout=SCAN_TIMEOUT,
+                timeout=SCAN_TIMEOUT_SECONDS,
                 verify=False,
                 allow_redirects=False
             )
@@ -73,10 +73,9 @@ class ScannerService:
                 logger.info(f"发现设备: {ip}")
                 return ip
                 
-        except:
-            pass
-        
-        return None
+        except Exception as e:
+            logger.debug(f"扫描 {ip} 失败: {str(e)}")
+            return None
 
     def scan_devices(self) -> list:
         """扫描局域网内的所有设备"""

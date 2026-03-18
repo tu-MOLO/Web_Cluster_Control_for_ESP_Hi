@@ -72,3 +72,11 @@ dist/
 
 # Project suggestions directory
 Project_Suggestions/
+
+# Documentation files
+通信协议与指令.md
+技术文档.md
+动作下发映射表与指令.md
+
+# Backend data files
+backend/devices.json
