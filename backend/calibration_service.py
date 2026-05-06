@@ -176,3 +176,10 @@ class CalibrationService:
     def get_servo_name(self, servo_code: str) -> str:
         """获取舵机名称"""
         return SERVO_NAME.get(servo_code, "未知")
+
+    def close(self):
+        """关闭校准服务，释放资源"""
+        if self.session:
+            self.session.close()
+            self.session = None
+        self.current_device = None

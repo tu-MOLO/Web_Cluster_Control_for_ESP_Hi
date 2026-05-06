@@ -7,6 +7,7 @@ import sys
 from typing import List, Dict, Optional
 from datetime import datetime
 import logging
+from functools import wraps
 
 # 导入自定义模块
 from device_manager import DeviceManager
@@ -43,6 +44,20 @@ logger.info("SocketIO initialized with threading async mode")
 scanner_service = ScannerService()
 device_manager = DeviceManager()
 calibration_service = CalibrationService()
+
+# ==================== 装饰器 ====================
+
+def require_normal_mode(f):
+    """装饰器：检查是否处于校准模式，如果是则返回错误"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if calibration_service.current_device:
+            return jsonify({
+                'success': False,
+                'error': '舵机校准模式下无法执行此操作，请先退出舵机校准模式'
+            }), 400
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ==================== 设备扫描相关 API ====================
 
@@ -279,15 +294,10 @@ def rename_device():
 # ==================== 设备控制相关 API ====================
 
 @app.route('/api/control/action', methods=['POST'])
+@require_normal_mode
 def execute_action():
     """执行预设动作"""
     try:
-        if calibration_service.current_device:
-            return jsonify({
-                'success': False,
-                'error': '舵机校准模式下无法执行此操作，请先退出舵机校准模式'
-            }), 400
-
         if not device_manager.controllers:
             return jsonify({
                 'success': False,
@@ -324,15 +334,10 @@ def execute_action():
         }), 500
 
 @app.route('/api/control/move', methods=['POST'])
+@require_normal_mode
 def execute_move():
     """执行移动控制"""
     try:
-        if calibration_service.current_device:
-            return jsonify({
-                'success': False,
-                'error': '舵机校准模式下无法执行此操作，请先退出舵机校准模式'
-            }), 400
-
         if not device_manager.controllers:
             return jsonify({
                 'success': False,
@@ -362,15 +367,10 @@ def execute_move():
         }), 500
 
 @app.route('/api/control/continuous/start', methods=['POST'])
+@require_normal_mode
 def start_continuous_move():
     """开始连续移动"""
     try:
-        if calibration_service.current_device:
-            return jsonify({
-                'success': False,
-                'error': '舵机校准模式下无法执行此操作，请先退出舵机校准模式'
-            }), 400
-
         if not device_manager.controllers:
             return jsonify({
                 'success': False,
@@ -418,15 +418,10 @@ def stop_continuous_move():
         }), 500
 
 @app.route('/api/control/sequence', methods=['POST'])
+@require_normal_mode
 def execute_sequence():
     """执行自定义动作序列"""
     try:
-        if calibration_service.current_device:
-            return jsonify({
-                'success': False,
-                'error': '舵机校准模式下无法执行此操作，请先退出舵机校准模式'
-            }), 400
-
         if not device_manager.controllers:
             return jsonify({
                 'success': False,

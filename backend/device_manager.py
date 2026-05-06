@@ -125,22 +125,29 @@ class ServoDogController:
                     cmd = f'{{"move":"{item["move"].upper()}"}}'
                 else:
                     return {"success": False, "error": "序列项格式错误"}
-                
+
                 self._send_raw_command(cmd)
                 time.sleep(item.get("delay", 1.0))
-            
+
             return {"success": True, "message": "序列执行完成"}
         except Exception as e:
             return {"success": False, "error": f"序列执行失败：{str(e)}"}
 
+    def close(self):
+        """关闭控制器，释放资源"""
+        self.stop_continuous_move()
+        if self.session:
+            self.session.close()
+            self.session = None
+
 
 class _ContinuousTimer:
     """连续移动定时器"""
-    
+
     def __init__(self, func):
         self.func = func
         self.running = False
-        self.thread = threading.Thread(target=self._loop, daemon=True)
+        self.thread = None
 
     def _loop(self):
         while self.running:
@@ -153,44 +160,54 @@ class _ContinuousTimer:
 
     def start(self):
         self.running = True
-        if not self.thread.is_alive():
+        # 如果线程不存在或已结束，创建新线程
+        if self.thread is None or not self.thread.is_alive():
+            self.thread = threading.Thread(target=self._loop, daemon=True)
             self.thread.start()
 
     def stop(self):
         self.running = False
-        if self.thread.is_alive():
+        if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.0)
 
 
 class DeviceManager:
     """多设备管理器"""
-    
+
     def __init__(self):
         self.controllers = {}
+        self.controllers_lock = threading.RLock()  # 用于保护 controllers 字典的锁
         self.executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_THREADS)
 
     def initialize_devices(self, devices: List[str]) -> Dict:
         """初始化设备控制器"""
-        # 清空旧的控制器，确保只控制当前选中的设备
-        self.controllers.clear()
-        
+        # 先关闭旧的控制器
+        with self.controllers_lock:
+            for controller in self.controllers.values():
+                try:
+                    controller.close()
+                except Exception as e:
+                    logger.warning(f"关闭旧控制器时出错: {str(e)}")
+            self.controllers.clear()
+
         futures = []
         for device in devices:
             futures.append(self.executor.submit(self._verify_device, device))
-        
+
         active_devices = []
         failed_devices = []
-        
+
         for future in as_completed(futures):
             device, controller, success = future.result()
             if success:
-                self.controllers[device] = controller
+                with self.controllers_lock:
+                    self.controllers[device] = controller
                 active_devices.append(device)
                 logger.info(f"设备 {device} 连接成功")
             else:
                 failed_devices.append(device)
                 logger.warning(f"设备 {device} 连接失败")
-        
+
         return {
             "active_devices": active_devices,
             "failed_devices": failed_devices
@@ -215,13 +232,16 @@ class DeviceManager:
         Returns:
             Dict: 设备到结果的映射
         """
-        if not self.controllers:
-            return {"error": "没有可用设备"}
+        with self.controllers_lock:
+            if not self.controllers:
+                return {"error": "没有可用设备"}
+            # 复制 controllers 字典，避免在迭代时被修改
+            controllers_snapshot = dict(self.controllers)
 
         results = {}
         futures = []
 
-        for device, controller in self.controllers.items():
+        for device, controller in controllers_snapshot.items():
             futures.append(
                 self.executor.submit(
                     lambda d, c: (d, operation_func(c, *args, **kwargs)),
@@ -268,3 +288,19 @@ class DeviceManager:
             lambda controller, sequence: controller.run_sequence(sequence),
             sequence
         )
+
+    def shutdown(self):
+        """关闭设备管理器，释放所有资源"""
+        # 停止所有设备的连续移动并关闭控制器
+        with self.controllers_lock:
+            for controller in self.controllers.values():
+                try:
+                    controller.close()
+                except Exception as e:
+                    logger.warning(f"关闭控制器时出错: {str(e)}")
+            self.controllers.clear()
+
+        # 关闭线程池
+        if self.executor:
+            self.executor.shutdown(wait=True)
+            self.executor = None
